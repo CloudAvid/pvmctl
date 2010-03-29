@@ -1,0 +1,11 @@
+#!/bin/bash
+# Copyright PDNSoft Co.
+# by: hamid jafarian
+
+# Makes Vlans ifup scripts 
+# Thay may used in "qemu" command for net interfaces
+
+for i in `sed -e "/^#/d" "/PDNCo./etc/vlans"`; do
+	sed -e "s/NNN/$i/" "/PDNCo./Scripts/ifup-vlanNNN" > "/PDNCo./Scripts/ifup-vlan$i";
+	chmod +x "/PDNCo./Scripts/ifup-vlan$i";
+done

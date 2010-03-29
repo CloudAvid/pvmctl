@@ -1,0 +1,33 @@
+#!/bin/bash
+# Copyright PDNSoft Co.
+# By: HMT
+# Creates Vlan Ethernets and their associated bridges
+
+vconfig="/sbin/vconfig"
+brctl="/usr/sbin/brctl"
+ifconfig="/sbin/ifconfig"
+modprobe="/sbin/modprobe"
+sed="/bin/sed"
+
+# Trunk Ethernet
+teth=`$sed -e "/^#/d" /PDNCo./etc/trunk-eth`
+
+$ifconfig $teth 0.0.0.0 up
+
+$modprobe "8021q" 
+
+# VLAN 9
+for i in `$sed -e "/^#/d" "/PDNCo./etc/vlans" `; do
+	$vconfig add $teth $i
+	$ifconfig $teth.$i 0.0.0.0 up
+
+	$brctl addbr brv$i
+	$ifconfig brv$i 0.0.0.0 up
+
+	$brctl addif brv$i $teth.$i
+	$brctl stp brv$i on
+done
+
+
+
+

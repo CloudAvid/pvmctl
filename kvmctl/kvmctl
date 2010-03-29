@@ -1,0 +1,792 @@
+#!/bin/sh
+#
+# Wrapper script to manage KVM virtual machines.
+# Licensed using the 2-clause BSD license (below)
+#
+# Copyright 2009 Freddie Cash
+# Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer
+#    in the documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY FREDDIE CASH ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL FREDDIE CASH BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Commands used in this script, just in case they are located elsewhere on your system
+# Alphabetised for convenience
+
+# Base Directory of all files
+basedir="/PDNCo."
+
+# Monitor base port
+# Monitor Port of virtual machines will be: mbport + id
+mbport="2200"
+
+awk="/usr/bin/awk"
+basename="/bin/basename"
+brctl="/usr/sbin/brctl"
+cat="/bin/cat"
+chmod="/bin/chmod"
+cp="/bin/cp"
+grep="/bin/grep"
+kill="/bin/kill"
+kvm="$basedir/usr/bin/qemu-system-x86_64"
+kvmimg="$basedir/usr/bin/qemu-img"
+pgrep="/usr/bin/pgrep"
+pkill="/usr/bin/pkill"
+rm="/bin/rm"
+sleep="/bin/sleep"
+sudo="/usr/bin/sudo"
+vncviewer="/usr/bin/vncviewer"
+
+EDITOR="vi"
+
+# Directories used in this script
+piddir="$basedir/var/run/kvm"
+confdir="$basedir/etc/kvm"
+
+# Directory of Virtualization Base Images for VM Creation
+bidir="$basedir/VMStorage/BIs"
+# Directory for Images of Virtuals 
+vmdir="$basedir/VMStorage/VMs"
+
+# The file to use as a template when creating new VM configs
+template="$basedir/Scripts/kvmctl/template.kvm"
+
+# Default ifup script
+defifup="$basedir/Scripts/kvmctl/kvm-ifup"
+
+# Vlan ifups Prefix
+vlanifup="$basedir/Scripts/ifup-vlan"
+
+# What to use as the base of the MAC address
+# This allows for 32 VMs to run on this host (01 through ff)
+# The id number from the config is appended to this
+macbase="00:16:3e:00:00"
+
+# Adjust these as needed.  These are the min and max amount
+# of RAM to assign to a VM, in MB
+minmem="128"
+maxmem="16384"
+
+# How long to sleep at certain points in the script
+sleeptime="3"
+
+
+##### Unless you want to change the default values in load_defaults() #####
+#####      NOTHING BELOW THIS LINE SHOULD NEED TO BE MODIFIED         #####
+
+
+# What are we called?
+scriptname=$( ${basename} $0 )
+scriptversion="2.0.4"
+
+# Functions used in the script
+load_defaults()
+{
+	# How much RAM to associate with the VM.
+	defmem="512"
+
+	# The number of virtual CPUs to assign to the VM.
+	# Stable values are 1-4
+	defcpus="1"
+
+	# Which mouse device to use
+	# Values:  mouse, tablet
+	defmouse="tablet"
+
+	# The network chipset to use in the VM.
+	# Values:  rtl1389, e1000, virtio
+	defnic="virtio"
+
+	# Which virtual block device to boot from
+	# Values:  a=floppy0, b=floppy1, c=disk0, d=disk1/disk2
+	defboot="c"
+
+	# Values  for disktype: ide, scsi, virtio
+	defdisktype="ide"
+
+	# Values  for media: disk, cdrom
+	defmedia="disk"
+
+	# Values for acpi:  no, "blank"
+	# no disables ACPI support in the VM
+	defacpi=""
+}
+
+load_configfile()
+{
+	# Check if the host config file exists, and suck in the contents if it does
+	if [ -r ${confdir}/${1}.kvm ]; then
+		. ${confdir}/${1}.kvm
+	else
+		echo "Error: Config file for ${1} (${confdir}/${1}.kvm) doesn't exist or is not readable."
+		exit 1
+	fi
+}
+
+check_host()
+{
+	# Check if a VM host name was given on the commandline
+	if [ -z "${1}" ]; then
+		echo "Error: Missing host to work on."
+		echo ""
+		do_usage
+		exit 1
+	fi
+
+	# Check if the host name given corresponds to a configured VM
+	if [ ! -e ${confdir}/${1}.kvm ]; then
+		echo "Error: The host you want to manage (${1}) doesn't have a config file.  ${confdir}/${1}.kvm doesn't exist."
+		echo ""
+		do_usage
+		exit 1
+	fi
+}
+
+do_start()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host "${1}"
+
+	# Load the default values for all the config options
+	load_defaults "${1}"
+
+	# Try to load the config file for the named host
+	# Will exit if the config file doesn't exist
+	load_configfile "${1}"
+
+	# Check that an ID is set
+	if [ -z ${id} ]; then
+		echo "Error: ID number for this host has not been set."
+		exit 1
+	fi
+
+#	# Check that a host name is set
+#	if [ -z ${host} ]; then
+#		echo "Error: Host name not set in the config file."
+#		exit 1
+#	fi
+
+	# Set host name to config file name
+	host="${1}"
+
+	# Check if there is a primary virtual block device in the config
+	if [ ! -z ${disk0} ]; then
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk0} ]; then
+			echo "Error:  Primary virtual drive (${disk0}) doesn't exist or isn't readable."
+			exit 1
+		else
+			confdisk0=${disk0}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media0}" in
+			disk)
+				confmedia0="disk"
+				;;
+			cdrom)
+				confmedia0="cdrom"
+				;;
+			*)
+				confmedia0=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype0}" in
+			ide)
+				confdisktype0="ide"
+				;;
+			scsi)
+				confdisktype0="scsi"
+				;;
+			virtio)
+				confdisktype0="virtio"
+				;;
+			*)
+				confdisktype0=${defdisktype}
+				;;
+		esac
+
+		# Check whether to use extboot support for the virtual drive
+		if [ ${confdisktype0} = "scsi" -o ${confdisktype0} = "virtio" ]; then
+			confextboot=",boot=on"
+		else
+			confextboot=""
+		fi
+
+		# Build the drive entry that will be passed to kvm
+		confdrive0="-drive index=0,media=${confmedia0},if=${confdisktype0}${confextboot},file=${confdisk0}"
+	else
+		echo "Error:  disk0 not set in config file.  Can't boot without a primary hard drive."
+		exit 1
+	fi
+
+	# Check if there is a second virtual block device in the config
+	if [ ! -z ${disk1} ]; then
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk1} ]; then
+			echo "Error:  Second virtual drive (${disk1}) doesn't exist or isn't readable."
+			exit 1
+		else
+			confdisk1=${disk1}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media1}" in
+			disk)
+				confmedia1="disk"
+				;;
+			cdrom)
+				confmedia1="cdrom"
+				;;
+			*)
+				confmedia1=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype1}" in
+			ide)
+				confdisktype1="ide"
+				;;
+			scsi)
+				confdisktype1="scsi"
+				;;
+			virtio)
+				confdisktype1="virtio"
+				;;
+			*)
+				confdisktype1=${defdisktype}
+				;;
+		esac
+
+		# Build the drive entry that will be passed to kvm
+		confdrive1="-drive index=1,media=${confmedia1},if=${confdisktype1},file=${confdisk1}"
+	fi
+
+	# Check if there is a third virtual block device in the config
+	if [ ! -z ${disk2} ]; then
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk2} ]; then
+			echo "Error:  Third virtual drive (${disk2}) doesn't exist or isn't readable."
+			exit 1
+		else
+			confdisk2=${disk2}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media2}" in
+			disk)
+				confmedia2="disk"
+				;;
+			cdrom)
+				confmedia2="cdrom"
+				;;
+			*)
+				confmedia2=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype2}" in
+			ide)
+				confdisktype2="ide"
+				;;
+			scsi)
+				confdisktype2="scsi"
+				;;
+			virtio)
+				confdisktype2="virtio"
+				;;
+			*)
+				confdisktype2=${defdisktype}
+				;;
+		esac
+
+		# Build the drive entry that will be passed to kvm
+		confdrive2="-drive index=2,media=${confmedia2},if=${confdisktype2},file=${confdisk2}"
+	fi
+
+	# Check if there is a fourth virtual block device in the config
+	if [ ! -z ${disk3} ]; then
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk3} ]; then
+			echo "Error:  Fourth virtual drive (${disk3}) doesn't exist or isnt' readable."
+			exit 1
+		else
+			confdisk3=${disk3}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media3}" in
+			disk)
+				confmedia3="disk"
+				;;
+			cdrom)
+				confmedia3="cdrom"
+				;;
+			*)
+				confmedia3=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype3}" in
+			ide)
+				confdisktype3="ide"
+				;;
+			scsi)
+				confdisktype3="scsi"
+				;;
+			virtio)
+				confdisktype3="virtio"
+				;;
+			*)
+				confdisktype3=${defdisktype}
+				;;
+		esac
+
+		# Build the drive entry that will be passed to kvm
+		confdrive3="-drive index=3,media=${confmedia3},if=${confdisktype3},file=${confdisk3}"
+	fi
+
+	# Added by PDNCo. HMT
+	# 1388-11-04
+	# Set Monitoring on telnet
+	confmonitor="telnet::$(( $mbport + $id )),server,nowait,nodelay";
+
+	# Check which device to boot from
+	if [ ! -z ${boot} ]; then
+		case "${boot}" in
+			a)
+				confboot="a"
+				;;
+			b)
+				confboot="b"
+				;;
+			c)
+				confboot="c"
+				;;
+			d)
+				confboot="d"
+				;;
+			*)
+				confboot=${defboot}
+				;;
+		esac
+	fi
+
+	# If booting off a CD-ROM, make "reboot" command act like "poweroff" command
+	if [ ! -z ${confmedia2} ]; then
+		if [ ${confboot} = "d" -a ${confmedia2} = "cdrom" ]; then
+			confreboot="-no-reboot"
+		else
+			confreboot=""
+		fi
+	fi
+
+	# Check which virtual NIC chipset to use
+	case "${nic}" in
+		rtl8139)
+			confnic="rtl8139"
+			;;
+		e1000)
+			confnic="e1000"
+			;;
+		virtio)
+			confnic="virtio"
+			;;
+		*)
+			confnic=${defnic}
+			;;
+	esac
+
+	# Added By PDNSoft Co.
+	# by hmt
+	# Network Config
+	eth1_script=$defifup
+	if [[ $eth1_vlan != "" ]]; then
+		eth1_script="$vlanifup$eth1_vlan";
+	fi
+	confnet="-net nic,macaddr=$macaddr1,vlan=0,model=${confnic} \
+		-net tap,vlan=0,ifname=vm${id}0,script=$eth1_script "
+
+	if [[ $has2eth == "yes" ]]; then
+		eth2_script=$defifup
+		if [[ $eth2_vlan != "" ]]; then
+			eth2_script="$vlanifup$eth2_vlan"
+		fi
+
+		confnet="$confnet -net nic,macaddr=$macaddr2,vlan=1,model=${confnic} \
+			-net tap,vlan=1,ifname=vm${id}1,script=$eth2_script ";
+	fi
+
+	# Check which virtual mouse chipset to use
+	case "${mouse}" in
+		mouse)
+			confmouse="mouse"
+			;;
+		tablet)
+			confmouse="tablet"
+			;;
+		*)
+			confmouse=${defmouse}
+			;;
+	esac
+
+	# Check whether to disable ACPI
+	case "${acpi}" in
+		no)
+			confacpi="-no-acpi"
+			;;
+		*)
+			confacpi=${defacpi}
+			;;
+	esac
+
+	# Check number of virtual CPUs to use
+	case "${cpus}" in
+		1)
+			confcpus="1"
+			;;
+		2)
+			confcpus="2"
+			confacpi=${defacpi}
+			;;
+		3)
+			confcpus="3"
+			confacpi=${defacpi}
+			;;
+		4)
+			confcpus="4"
+			confacpi=${defacpi}
+			;;
+		*)
+			confcpus=${defcpus}
+			confacpi=${defacpi}
+			;;
+	esac
+
+	# Check the amount of RAM to assign to the VM
+	if [ ${mem} -lt ${minmem} -o ${mem} -gt ${maxmem} ]; then
+		echo "Warning: Virtual RAM is not between ${minmem} and ${maxmem}.  Setting virtual RAM to ${defmem}."
+		confmem=${defmem}
+	else
+		confmem=${mem}
+	fi
+
+	# Start the VM
+	echo "Attempting to start VM for ${1} ..."
+	${kvm} \
+		-name ${host} \
+		-smp ${confcpus} \
+		-m ${confmem} \
+		-vnc :${id} \
+		-daemonize \
+		-localtime \
+		-usb \
+		-usbdevice ${confmouse} \
+		$confnet \
+		-pidfile ${piddir}/${host}.pid \
+		-boot ${confboot} \
+		-monitor ${confmonitor} \
+		${confacpi} \
+		${confreboot} \
+		${confdrive0} \
+		${confdrive1} \
+		${confdrive2} \
+		${confdrive3}
+        # Reset the permissions on the PID file
+	if [ -e ${piddir}/${host}.pid ]; then
+		${chmod} 644 ${piddir}/${host}.pid
+	else
+		echo "Error creating the PID file.  VM is running, though."
+	fi
+
+	echo "VM for ${1} has started."
+
+	# Show the VNC port assigned to the VM.
+	do_whichvnc "${1}"
+}
+
+do_stop()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host "${1}"
+
+	echo "Attempting to stop VM for ${1} ..."
+	if [ -r ${piddir}/${1}.pid ]; then
+		${kill} -TERM $( ${cat} ${piddir}/${1}.pid )
+
+		${sleep} ${sleeptime}
+
+		if [ -d /proc/$( ${cat} ${piddir}/${1}.pid ) ]; then
+			echo "Warning: Something is wrong ... couldn't stop the VM."
+			do_forcekill "${1}"
+		fi
+
+		${rm} ${piddir}/${1}.pid
+	else
+		echo "Warning: PID file missing or not readable."
+		do_forcekill "${1}"
+	fi
+
+	echo "VM for ${1} has stopped."
+}
+
+do_forcekill()
+{
+	echo -n "Do you want to forcibly kill the KVM process for ${1}? (y/n) "
+	read yesno
+	case "${yesno}" in
+		[yY]*)
+			${pkill} -f -- "-name ${1}"
+			;;
+		*)
+			echo "Not stopping the VM for ${1}."
+			exit 0
+			;;
+	esac
+}
+
+do_status()
+{
+	if [ -z ${1} ]; then
+		# Called with blank argument, show just the names of the running VMs
+		echo "The following VMs are running:"
+		${pgrep} -lf kvm | ${grep} -v ${scriptname} | ${awk} '{ print $4 }'
+	elif [ ${1} = "kvm" ]; then
+		# Called with "kvm" argument, show full details of all kvm processes
+		echo "The following VMs are running:"
+		${pgrep} -lf kvm | ${grep} -v ${scriptname}
+	elif [ -e ${confdir}/${1}.kvm ]; then
+		# Called with a VM host name, show details for just that kvm process
+		${pgrep} -lf -- "-name ${1}" | ${grep} -v ${scriptname}
+		if [ $? -eq 1 ]; then
+			echo "VM for ${1} is not running"
+		fi
+	else
+		echo "Error: Don't understand the command."
+		echo ""
+		do_usage
+		exit 1
+	fi
+}
+
+do_usage()
+{
+	${cat} <<-end-of-help
+	${scriptname} ${scriptversion}
+	Licensed under BSDL
+	Copyright 2009
+
+	${scriptname} is a management and control script for KVM-based virtual machines.
+
+	Usage:  ${scriptname} start    host    - start the named VM
+	        ${scriptname} startvnc host    - start the named VM, and then connect to console via VNC
+	        ${scriptname} stop     host    - stop  the named VM (only use if the guest is hung)
+	        ${scriptname} restart  host    - stop and then start the named VM (only use if the guest is hung)
+
+	        ${scriptname} vnc      host    - connect via VNC to the console of the named VM
+	        ${scriptname} whichvnc host    - show which VNC display port is assigned to the named VM
+	        ${scriptname} killvnc  host    - kills any running vncviewer processes attached to the named VM
+
+	        ${scriptname} edit     host    - open config file for host using \$EDITOR, or create a new config file based on a template
+
+	        ${scriptname} status           - show the names of all running VMs
+	        ${scriptname} status   kvm     - show full details for all running kvm processes
+	        ${scriptname} status   host    - show full details for the named kvm process
+
+	        ${scriptname} help             - show this usage blurb
+
+	** Using stop is the same as pulling the power cord on a physical system. Use with caution.
+
+	end-of-help
+}
+
+do_whichvnc()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host ${1}
+
+	echo -n "The VNC port for ${1} is "
+	${pgrep} -lf -- "-name ${1}" | ${grep} -v ${scriptname} | ${awk} '{ print $10 }'
+}
+
+do_vnc()
+{
+	if [ ${UID} -eq 0 ];then
+		echo -n "Do you really want to run vncviewer as root? (y/n) "
+		read yesno
+		case "${yesno}" in
+			[yY]*)
+				break
+				;;
+			*)
+				exit 1
+				;;
+		esac
+	fi
+
+	${vncviewer} localhost$( ${pgrep} -lf -- "-name ${1}" | ${grep} -v ${scriptname} | ${awk} '{ print $10 }' ) > /dev/null 2>&1 &
+}
+
+do_killvnc()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host ${1}
+
+	# Get the VNC port used by the VM
+	vncport=$( ${pgrep} -lf -- "-name ${1}" | ${grep} -v ${scriptname} | ${awk} '{ print $10 }' ) 
+
+	echo -n "Do you really want to kill the vncviewer for ${1}? (y/n) "
+	read yesno
+	case "${yesno}" in
+		[yY]*)
+			# Kill the associated vncviewer process
+			${pkill} -f -- "localhost${vncport}"
+			echo "vncviewer process for ${1} has been terminated."
+			;;
+		*)
+			exit 0
+			;;
+	esac
+}
+
+check_uid()
+{
+	# If not being run as root, try to use sudo for start/stop
+	if [ ${UID} -ne 0 ]; then
+		cat="${sudo} ${cat}"
+		chmod="${sudo} ${chmod}"
+		kvm="${sudo} ${kvm}"
+		kill="${sudo} ${kill}"
+		pkill="${sudo} ${pkill}"
+		rm="${sudo} ${rm}"
+	fi
+}
+
+do_create()
+{
+	echo ${bidir}/${2}
+	if [ -r ${bidir}/${2} ]; then
+		if [ -w ${vmdir} ]; then
+			mkdir ${vmdir}/${1}
+			${kvmimg} create -b  ${bidir}/${2} -f  qcow2   ${vmdir}/${1}/${1}.qcow2
+		else 
+			echo "Error: Virtual directory isn't writable"
+			exit 1
+		fi
+	else 
+		echo "Error: Can't read base image"
+		exit 1
+	fi
+		
+	if [ -r ${template} ]; then
+		if [ -w ${confdir} ]; then
+			${cp} ${template} ${confdir}/${1}.kvm
+			${EDITOR} ${confdir}/${1}.kvm
+		else
+			echo "Error: You don't have write permission for ${confdir}"
+			exit 1
+		fi
+	else
+		echo "Error: The template config file (${template}) doesn't exist or isn't readable."
+		exit 1
+	fi
+}
+
+do_edit()
+{
+	# If the config file exists, and is writable by the user, then load it using $EDITOR
+	if [ -e ${confdir}/${1}.kvm ]; then
+		if [ -w ${confdir}/${1}.kvm ]; then
+			${EDITOR} ${confdir}/${1}.kvm
+		else
+			echo "Error: You don't have write permission for ${confdir}/${1}.kvm"
+			exit 1
+		fi
+	else
+		echo -n "${confdir}/${1}.kvm does not exist.  Would you like to create one from the template? (y/n) "
+		read yesno
+		case "${yesno}" in
+			[yY]*)
+				if [ -r ${template} ]; then
+					if [ -w ${confdir} ]; then
+						${cp} ${template} ${confdir}/${1}.kvm
+						${EDITOR} ${confdir}/${1}.kvm
+					else
+						echo "Error: You don't have write permission for ${confdir}"
+						exit 1
+					fi
+				else
+					echo "Error: The template config file (${template}) doesn't exist or isn't readable."
+					exit 1
+				fi
+				;;
+			*)
+				echo "As you wish."
+				;;
+		esac
+	fi
+}
+
+# Main script
+case "${1}" in
+	"start")
+		check_uid
+		do_start "${2}"
+		;;
+	"startvnc")
+		check_uid
+		do_start "${2}"
+		do_vnc "${2}"
+		;;
+	"stop")
+		check_uid
+		do_stop "${2}"
+		;;
+	"restart")
+		check_uid
+		do_stop "${2}"
+		${sleep} ${sleeptime}
+		do_start "${2}"
+		;;
+	"status")
+		do_status "${2}"
+		;;
+	"vnc")
+		do_vnc "${2}"
+		;;
+	"whichvnc")
+		do_whichvnc "${2}"
+		;;
+	"killvnc")
+		do_killvnc "${2}"
+		;;
+	"create")
+		do_create "${2}" "${3}"
+		;;
+	"edit")
+		do_edit "${2}"
+		;;
+	"help")
+		do_usage
+		;;
+	*)
+		do_usage
+		;;
+esac
+
+exit 0
