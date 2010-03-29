@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+# This is a simple init script to auto-start/auto-stop KVM VMs
+# when the host server boots or shuts down.
+#
+# This script should be set to run after networking is configured.
+#
+# Paths to pvmctl and the auto-start directory:
+
+sed="/bin/sed"
+
+# Base Directory of PDNSoft Co. Environment
+basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
+
+pvmctl="$basedir/Scripts/pvmctl"
+autodir="$basedir/etc/pvm"
+
+makevlans="$basedir/Scripts/make-vlans&bridges"
+makeifups="$basedir/Scripts/make-vlans-ifup"
+
+# Functions used in this script
+do_action()
+{
+	for I in `ls ${autodir}`; do
+		${pvmctl} "${1}" ${I%%.pvm}
+	done
+}
+
+do_status()
+{
+	${pvmctl} status
+}
+
+# Main script
+case "$1" in
+	boot)
+		$makevlans
+                $makeifups
+		do_action "start"
+		;;
+	start)
+		do_action "$1"
+		;;
+	stop)
+		do_action "$1"
+		;;
+	restart)
+		do_action "$1"
+		;;
+	status)
+		do_status
+		;;
+	*)
+		echo "Usage: ${0} [start|stop|restart|status]"
+		;;
+esac

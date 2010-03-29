@@ -1,0 +1,1238 @@
+#!/bin/sh
+#
+# Wrapper script to manage KVM virtual machines.
+# Licensed using the 2-clause BSD license (below)
+#
+# Copyright 2009 Freddie Cash
+# Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer
+#    in the documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY FREDDIE CASH ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL FREDDIE CASH BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# History
+# 1388-11-24 by hamid jafarian
+#	* do_rename function
+# 1388-11-25 by hamid jafarian
+#	* do_clone function
+#	* for disks in config file: add Ability to use Relative Pathes to $vmdir(for disks),$isodir(for cdrom) 
+#					beside the ability to define Full Pathes
+# 1388-12-9: by hamid jafarian
+#	* Add "sid" parameter support
+#	* Add "host_usb1" parameter support
+
+sed="/bin/sed"
+
+# Base Directory of PDNSoft Co. Environment
+basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
+
+# Monitor base port
+# Monitor Port of virtual machines will be: mbport + id
+mbport=2200
+
+awk="/usr/bin/awk"
+basename="/bin/basename"
+brctl="/usr/sbin/brctl"
+cat="/bin/cat"
+chmod="/bin/chmod"
+cp="/bin/cp"
+grep="/bin/grep"
+kill="/bin/kill"
+#kvm="$basedir/usr/bin/qemu-system-x86_64"
+kvm="/usr/libexec/qemu-kvm"
+#kvmimg="$basedir/usr/bin/qemu-img"
+kvmimg="/usr/bin/qemu-img"
+pgrep="/usr/bin/pgrep"
+pkill="/usr/bin/pkill"
+rm="/bin/rm"
+sleep="/bin/sleep"
+sudo="/usr/bin/sudo"
+vncviewer="/usr/bin/vncviewer"
+macgen="$basedir/Scripts/macgen.py"
+nc="/usr/bin/nc"
+
+EDITOR="/usr/bin/vim"
+
+# Directories used in this script
+piddir="$basedir/var/run/pvm"
+confdir="$basedir/etc/pvm"
+
+# Directory of Virtualization Base Images for VM Creation
+bidir="$basedir/VMStorage/BIs"
+# Directory for Images of Virtuals 
+vmdir="$basedir/VMStorage/VMs"
+isodir="$basedir/VMStorage/ISOs"
+
+# The file to use as a template when creating new VM configs
+template="$basedir/Scripts/template.pvm"
+
+# Default ifup script
+defifup="$basedir/Scripts/pvm-ifup"
+
+# Vlan ifups Prefix
+vlanifup="$basedir/Scripts/ifup-vlan"
+
+# VirtualMachines Servicee files dir
+srvdir="$basedir/Scripts/Services"
+
+# Adjust these as needed.  These are the min and max amount
+# of RAM to assign to a VM, in MB
+minmem="128"
+maxmem="16384"
+
+# How long to sleep at certain points in the script
+sleeptime="3"
+
+
+# What are we called?
+scriptname=$( ${basename} $0 )
+scriptversion="1.0"
+
+# Functions used in the script
+load_defaults()
+{
+	# How much RAM to associate with the VM.
+	defmem="512"
+
+	# The number of virtual CPUs to assign to the VM.
+	# Stable values are 1-4
+	defcpus="1"
+
+	# Which mouse device to use
+	# Values:  mouse, tablet
+	defmouse="tablet"
+
+	# The network chipset to use in the VM.
+	# Values:  rtl1389, e1000, virtio
+	defnic="virtio"
+
+	# Which virtual block device to boot from
+	# Values:  a=floppy0, b=floppy1, c=disk0, d=disk1/disk2
+	defboot="c"
+
+	# Values  for disktype: ide, scsi, virtio
+	defdisktype="ide"
+
+	# Values  for media: disk, cdrom
+	defmedia="disk"
+
+	# Values for acpi:  no, "blank"
+	# no disables ACPI support in the VM
+	defacpi=""
+}
+
+load_configfile()
+{
+	# Check if the host config file exists, and suck in the contents if it does
+	if [ -r ${confdir}/${1}.pvm ]; then
+		. ${confdir}/${1}.pvm
+	else
+		echo "Error: Config file for ${1} (${confdir}/${1}.pvm) doesn't exist or is not readable."
+		exit 1
+	fi
+
+	if [[ -f $basedir/etc/VMStorages ]]; then
+		for i in `sed -e "/^#/d" $basedir/etc/VMStorages`; do
+			__id=`echo $i | cut -s -d ";" -f 1`;
+			if [[ $__id -eq sid ]]; then
+				__path=`echo $i | cut -s -d ";" -f 2`;
+				vmdir="$__path"
+			fi
+		done
+	fi
+}
+
+check_host()
+{
+	# Check if a VM host name was given on the commandline
+	if [ -z "${1}" ]; then
+		echo "Error: Missing host to work on."
+		echo ""
+		#do_usage
+		exit 1
+	fi
+
+	# Check if the host name given corresponds to a configured VM
+	if [ ! -e ${confdir}/${1}.pvm ]; then
+		echo "Error: The host you want to manage (${1}) doesn't have a config file.  ${confdir}/${1}.pvm doesn't exist."
+		echo ""
+		#do_usage
+		exit 1
+	fi
+}
+
+do_start()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host "${1}"
+
+	# Load the default values for all the config options
+	load_defaults "${1}"
+
+	# Try to load the config file for the named host
+	# Will exit if the config file doesn't exist
+	load_configfile "${1}"
+
+	# Check that an ID is set
+	if [ -z ${id} ]; then
+		echo "Error: ID number for this host has not been set."
+		exit 1
+	fi
+
+#	# Check that a host name is set
+#	if [ -z ${host} ]; then
+#		echo "Error: Host name not set in the config file."
+#		exit 1
+#	fi
+
+	# Set host name to config file name
+	host="${1}"
+
+	# Check if there is a primary virtual block device in the config
+	if [ ! -z ${disk0} ]; then
+		# Check if path is Absolute?
+		if [[ $(expr ${disk0} : '/') -eq 0 ]]; then
+			# Check if disk is cdrom (iso)?
+			if [[ ${disk0%%.iso} != ${disk0} ]]; then
+				disk0="${isodir}/${disk0}"
+			else
+				disk0="${vmdir}/${host}/${disk0}"
+			fi
+		fi
+
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk0} ]; then
+			echo "Error:  Primary virtual drive (${disk0}) doesn't exist or isn't readable."
+			exit 1
+		else
+			confdisk0=${disk0}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media0}" in
+			disk)
+				confmedia0="disk"
+				;;
+			cdrom)
+				confmedia0="cdrom"
+				;;
+			*)
+				confmedia0=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype0}" in
+			ide)
+				confdisktype0="ide"
+				;;
+			scsi)
+				confdisktype0="scsi"
+				;;
+			virtio)
+				confdisktype0="virtio"
+				;;
+			*)
+				confdisktype0=${defdisktype}
+				;;
+		esac
+
+		# Check whether to use extboot support for the virtual drive
+		if [ ${confdisktype0} = "scsi" -o ${confdisktype0} = "virtio" ]; then
+			confextboot=",boot=on"
+		else
+			confextboot=""
+		fi
+
+		# Build the drive entry that will be passed to kvm
+		confdrive0="-drive index=0,media=${confmedia0},if=${confdisktype0}${confextboot},file=${confdisk0}"
+	else
+		echo "Error:  disk0 not set in config file.  Can't boot without a primary hard drive."
+		exit 1
+	fi
+
+	# Check if there is a second virtual block device in the config
+	if [ ! -z ${disk1} ]; then
+		# Check if path is Absolute?
+		if [[ $(expr ${disk1} : '/') -eq 0 ]]; then
+			# Check if disk is cdrom (iso)?
+			if [[ ${disk1%%.iso} != ${disk1} ]]; then
+				disk1="${isodir}/${disk1}"
+			else
+				disk1="${vmdir}/${host}/${disk1}"
+			fi
+		fi
+
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk1} ]; then
+			echo "Error:  Second virtual drive (${disk1}) doesn't exist or isn't readable."
+			exit 1
+		else
+			confdisk1=${disk1}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media1}" in
+			disk)
+				confmedia1="disk"
+				;;
+			cdrom)
+				confmedia1="cdrom"
+				;;
+			*)
+				confmedia1=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype1}" in
+			ide)
+				confdisktype1="ide"
+				;;
+			scsi)
+				confdisktype1="scsi"
+				;;
+			virtio)
+				confdisktype1="virtio"
+				;;
+			*)
+				confdisktype1=${defdisktype}
+				;;
+		esac
+
+		# Build the drive entry that will be passed to kvm
+		confdrive1="-drive index=1,media=${confmedia1},file=${confdisk1},if=${confdisktype1}"
+	fi
+
+	# Check if there is a third virtual block device in the config
+	if [ ! -z ${disk2} ]; then
+		# Check if path is Absolute?
+		if [[ $(expr ${disk2} : '/') -eq 0 ]]; then
+			# Check if disk is cdrom (iso)?
+			if [[ ${disk2%%.iso} != ${disk2} ]]; then
+				disk2="${isodir}/${disk2}"
+			else
+				disk2="${vmdir}/${host}/${disk2}"
+			fi
+		fi
+
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk2} ]; then
+			echo "Error:  Third virtual drive (${disk2}) doesn't exist or isn't readable."
+			exit 1
+		else
+			confdisk2=${disk2}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media2}" in
+			disk)
+				confmedia2="disk"
+				;;
+			cdrom)
+				confmedia2="cdrom"
+				;;
+			*)
+				confmedia2=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype2}" in
+			ide)
+				confdisktype2="ide"
+				;;
+			scsi)
+				confdisktype2="scsi"
+				;;
+			virtio)
+				confdisktype2="virtio"
+				;;
+			*)
+				confdisktype2=${defdisktype}
+				;;
+		esac
+
+		# Build the drive entry that will be passed to kvm
+		confdrive2="-drive index=2,media=${confmedia2},if=${confdisktype2},file=${confdisk2}"
+	fi
+
+	# Check if there is a fourth virtual block device in the config
+	if [ ! -z ${disk3} ]; then
+		# Check if path is Absolute?
+		if [[ $(expr ${disk3} : '/') -eq 0 ]]; then
+			# Check if disk is cdrom (iso)?
+			if [[ ${disk3%%.iso} != ${disk3} ]]; then
+				disk3="${isodir}/${disk3}"
+			else
+				disk3="${vmdir}/${host}/${disk3}"
+			fi
+		fi
+
+		# Check if the primary block device exists in the host.
+		if [ ! -e ${disk3} ]; then
+			echo "Error:  Fourth virtual drive (${disk3}) doesn't exist or isnt' readable."
+			exit 1
+		else
+			confdisk3=${disk3}
+		fi
+
+		# Check what kind of media to use for the virtual drive
+		case "${media3}" in
+			disk)
+				confmedia3="disk"
+				;;
+			cdrom)
+				confmedia3="cdrom"
+				;;
+			*)
+				confmedia3=${defmedia}
+				;;
+		esac
+
+		# Check what kind of interface to use for the virtual drive
+		case "${disktype3}" in
+			ide)
+				confdisktype3="ide"
+				;;
+			scsi)
+				confdisktype3="scsi"
+				;;
+			virtio)
+				confdisktype3="virtio"
+				;;
+			*)
+				confdisktype3=${defdisktype}
+				;;
+		esac
+
+		# Build the drive entry that will be passed to kvm
+		confdrive3="-drive index=3,media=${confmedia3},if=${confdisktype3},file=${confdisk3}"
+	fi
+
+	# Added by PDNCo. HMT
+	# 1388-11-04
+	# Set Monitoring on telnet
+	confmonitor="telnet::$(( $mbport + $id )),server,nowait,nodelay";
+
+	# Check which device to boot from
+	if [ ! -z ${boot} ]; then
+		case "${boot}" in
+			a)
+				confboot="a"
+				;;
+			b)
+				confboot="b"
+				;;
+			c)
+				confboot="c"
+				;;
+			d)
+				confboot="d"
+				;;
+			*)
+				confboot=${defboot}
+				;;
+		esac
+	fi
+
+	# If booting off a CD-ROM, make "reboot" command act like "poweroff" command
+	if [ ! -z ${confmedia2} ]; then
+		if [ ${confboot} = "d" -a ${confmedia2} = "cdrom" ]; then
+			confreboot="-no-reboot"
+		else
+			confreboot=""
+		fi
+	fi
+
+	# Check which virtual NIC chipset to use
+	case "${nic}" in
+		rtl8139)
+			confnic="rtl8139"
+			;;
+		e1000)
+			confnic="e1000"
+			;;
+		virtio)
+			confnic="virtio"
+			;;
+		*)
+			confnic=${defnic}
+			;;
+	esac
+
+	# Added By PDNSoft Co.
+	# by hmt
+	# Network Config
+	eth1_script=$defifup
+	if [[ $eth1_vlan != "" ]]; then
+		eth1_script="$vlanifup$eth1_vlan";
+	fi
+	confnet="-net nic,macaddr=$macaddr1,vlan=0,model=${confnic} \
+		-net tap,vlan=0,ifname=vm${id}0,script=$eth1_script "
+
+	if [[ $has2eth == "yes" ]]; then
+		eth2_script=$defifup
+		if [[ $eth2_vlan != "" ]]; then
+			eth2_script="$vlanifup$eth2_vlan"
+		fi
+
+		confnet="$confnet -net nic,macaddr=$macaddr2,vlan=1,model=${confnic} \
+			-net tap,vlan=1,ifname=vm${id}1,script=$eth2_script ";
+	fi
+
+	# Check which virtual mouse chipset to use
+	case "${mouse}" in
+		mouse)
+			confmouse="mouse"
+			;;
+		tablet)
+			confmouse="tablet"
+			;;
+		*)
+			confmouse=${defmouse}
+			;;
+	esac
+
+	# Check whether to disable ACPI
+	case "${acpi}" in
+		no)
+			confacpi="-no-acpi"
+			;;
+		*)
+			confacpi=${defacpi}
+			;;
+	esac
+
+	# Check number of virtual CPUs to use
+	case "${cpus}" in
+		1)
+			confcpus="1"
+			;;
+		2)
+			confcpus="2"
+			confacpi=${defacpi}
+			;;
+		3)
+			confcpus="3"
+			confacpi=${defacpi}
+			;;
+		4)
+			confcpus="4"
+			confacpi=${defacpi}
+			;;
+		*)
+			confcpus=${defcpus}
+			confacpi=${defacpi}
+			;;
+	esac
+
+	# Check the amount of RAM to assign to the VM
+	if [ ${mem} -lt ${minmem} -o ${mem} -gt ${maxmem} ]; then
+		echo "Warning: Virtual RAM is not between ${minmem} and ${maxmem}.  Setting virtual RAM to ${defmem}."
+		confmem=${defmem}
+	else
+		confmem=${mem}
+	fi
+
+	# Check for host-usb device
+	if [[ ! -z ${host_usb1} ]]; then
+		confusb1="-usbdevice host:${host_usb1}"
+	fi
+
+	# Start the VM
+	echo "Attempting to start VM for ${1} ..."
+	${kvm} \
+		-name ${host} \
+		-smp ${confcpus} \
+		-m ${confmem} \
+		-vnc :${id} \
+		-daemonize \
+		-localtime \
+		-usb \
+		-usbdevice ${confmouse} \
+		$confnet \
+		-pidfile ${piddir}/${host}.pid \
+		-boot ${confboot} \
+		-monitor ${confmonitor} \
+		${confusb1} \
+		${confacpi} \
+		${confreboot} \
+		${confdrive0} \
+		${confdrive1} \
+		${confdrive2} \
+		${confdrive3}
+	# check if the vm is running?
+	if [[ $? -eq 1 ]]; then
+		echo "Error: VM for ${1} not started"
+		exit 1
+	fi
+        # Reset the permissions on the PID file
+	if [ -e ${piddir}/${host}.pid ]; then
+		${chmod} 644 ${piddir}/${host}.pid
+	else
+		echo "Error creating the PID file.  VM is running, though."
+	fi
+
+	echo "VM for ${1} has started."
+
+	# Show the VNC port assigned to the VM.
+	do_whichvnc "${1}"
+}
+
+do_stop()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host "${1}"
+
+	echo "Attempting to stop VM for ${1} ..."
+	if [ -r ${piddir}/${1}.pid ]; then
+		${kill} -TERM $( ${cat} ${piddir}/${1}.pid )
+
+		${sleep} ${sleeptime}
+
+		if [ -d /proc/$( ${cat} ${piddir}/${1}.pid ) ]; then
+			echo "Warning: Something is wrong ... couldn't stop the VM."
+			#do_forcekill "${1}"
+			# hm.t. changed for cluster environment
+			${pkill} -f -- "-name ${1}"
+		fi
+
+		${rm} ${piddir}/${1}.pid
+	else
+		echo "Warning: PID file missing or not readable."
+		do_forcekill "${1}"
+	fi
+
+	echo "VM for ${1} has stopped."
+}
+
+do_forcekill()
+{
+	echo -n "Do you want to forcibly kill the KVM process for ${1}? (y/n) "
+	read yesno
+	case "${yesno}" in
+		[yY]*)
+			${pkill} -f -- "-name ${1}"
+			;;
+		*)
+			echo "Not stopping the VM for ${1}."
+			exit 0
+			;;
+	esac
+}
+
+do_status()
+{
+	if [ -z ${1} ]; then
+		# Called with blank argument, show just the names of the running VMs
+		echo "The following VMs are running:"
+		${pgrep} -lf qemu-kvm | ${grep} -v ${scriptname} | ${awk} '{ print $4 }'
+	elif [ ${1} = "kvm" ]; then
+		# Called with "kvm" argument, show full details of all kvm processes
+		echo "The following VMs are running:"
+		${pgrep} -lf qemu | ${grep} -v ${scriptname}
+	elif [ -e ${confdir}/${1}.pvm ]; then
+		# Called with a VM host name, show details for just that kvm process
+		${pgrep} -lf -- "-name ${1} " | ${grep} -v ${scriptname} > /dev/null
+		if [ $? -eq 1 ]; then
+			echo "VM for ${1} is not running"
+			exit 1
+		else
+			echo "VM for ${1} is running"
+			exit 0
+		fi
+	else
+		echo "Error: Don't understand the command."
+		echo ""
+		do_usage
+		exit 1
+	fi
+}
+
+do_usage()
+{
+	${cat} <<-end-of-help
+	${scriptname} ${scriptversion}
+	Licensed under BSDL
+	Copyright 2010
+
+	${scriptname} is a management and control script for KVM-based virtual machines.
+
+	Usage:  ${scriptname} start    host    - start the named VM
+	        ${scriptname} startvnc host    - start the named VM, and then connect to console via VNC
+
+	        ${scriptname} shutdown host    - send shutdown signal to VM
+	        ${scriptname} reset    host    - send reset signal to VM
+
+	        ${scriptname} stop     host    - stop  the named VM (only use if the guest is hung)
+	        ${scriptname} restart  host    - stop and then start the named VM (only use if the guest is hung)
+
+	        ${scriptname} vnc      host    - connect via VNC to the console of the named VM
+	        ${scriptname} whichvnc host    - show which VNC display port is assigned to the named VM
+	        ${scriptname} killvnc  host    - kills any running vncviewer processes attached to the named VM
+
+	        ${scriptname} edit     host    - open config file for host using \$EDITOR, or create a new config file based on a template
+
+	        ${scriptname} status           - show the names of all running VMs
+	        ${scriptname} status   kvm     - show full details for all running kvm processes
+	        ${scriptname} status   host    - show full details for the named kvm process
+
+	        ${scriptname} snaps    host    - show all snapshots of the host
+	        ${scriptname} mksnap   host  [tag|id]  - make an snapshot with [tag|id] if given, or not a new
+	        ${scriptname} ldsnap   host   tag|id   - load snapshot with tag|id
+	        ${scriptname} rmsnap   host   tag|id   - remove snapshot with tag|id
+
+	        ${scriptname} mkimg    host image_name image_size 	- create a disk image in the host directory
+
+	        ${scriptname} ls               - list virtual machines
+	        ${scriptname} info     host    - print out host information (parameters in config file)
+	        ${scriptname} rmvm     host    - delete files(config/images) of virtual machine
+	        ${scriptname} rename   host   new_name 		- rename host to new_name
+	        ${scriptname} clone    host   clone_name clone_id  	- creating a clone from the host
+	
+	        ${scriptname} lsbi             - List of Virtual Templates 
+	        ${scriptname} create   vm_template host_name host_id    - Create A virtual machine from template
+
+	        ${scriptname} help             - show this usage blurb
+
+	** Using stop is the same as pulling the power cord on a physical system. Use with caution.
+
+	end-of-help
+}
+
+do_whichvnc()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host ${1}
+
+	echo -n "The VNC port for ${1} is "
+	${pgrep} -lf -- "-name ${1} " | ${grep} -v ${scriptname} | ${awk} '{ print $10 }'
+}
+
+do_vnc()
+{
+	if [ ${UID} -eq 0 ];then
+		echo -n "Do you really want to run vncviewer as root? (y/n) "
+		read yesno
+		case "${yesno}" in
+			[yY]*)
+				break
+				;;
+			*)
+				exit 1
+				;;
+		esac
+	fi
+
+	${vncviewer} localhost$( ${pgrep} -lf -- "-name ${1}" | ${grep} -v ${scriptname} | ${awk} '{ print $10 }' ) > /dev/null 2>&1 &
+}
+
+do_killvnc()
+{
+	# Check if a virtual host was given on the commandline
+	# Will exit if none was given
+	check_host ${1}
+
+	# Get the VNC port used by the VM
+	vncport=$( ${pgrep} -lf -- "-name ${1}" | ${grep} -v ${scriptname} | ${awk} '{ print $10 }' ) 
+
+	echo -n "Do you really want to kill the vncviewer for ${1}? (y/n) "
+	read yesno
+	case "${yesno}" in
+		[yY]*)
+			# Kill the associated vncviewer process
+			${pkill} -f -- "localhost${vncport}"
+			echo "vncviewer process for ${1} has been terminated."
+			;;
+		*)
+			exit 0
+			;;
+	esac
+}
+
+check_uid()
+{
+	# If not being run as root, try to use sudo for start/stop
+	if [ ${UID} -ne 0 ]; then
+		cat="${sudo} ${cat}"
+		chmod="${sudo} ${chmod}"
+		kvm="${sudo} ${kvm}"
+		kill="${sudo} ${kill}"
+		pkill="${sudo} ${pkill}"
+		rm="${sudo} ${rm}"
+	fi
+}
+
+do_shutdown()
+{
+	if [[ -z ${1} ]]; then
+		echo "usage: shutdown host";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	mport=$(( $mbport + $id ))
+
+	echo "system_powerdown" | $nc localhost $mport > /dev/null
+	echo "Shutdown signal sent to ${1} ... "
+}
+
+do_reset()
+{
+	if [[ -z ${1} ]]; then
+		echo "usage: reset host";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	mport=$(( $mbport + $id ))
+
+	echo "system_reset" | $nc localhost $mport > /dev/null
+	echo "reset signal sent to ${1} ... "
+}
+
+do_mkimg()
+{
+	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
+		echo "usage: mkimg host image_name image_size(M|G)";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	if [ -e $vmdir/${1} ]; then
+		$kvmimg create -f qcow2 $vmdir/${1}/${2} ${3}
+	else
+		echo "directory: $vmdir/${1} doesn\'t exist"
+	fi
+}
+
+do_snaps()
+{
+	if [[ -z ${1} ]]; then
+		echo "usage: snaps host";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	echo "${1} snapshots:"
+	mport=$(( $mbport + $id ))
+	echo "info snapshots" | $nc localhost $mport | $sed -e "1,2d" -e "\$d" 
+}
+
+do_mksnap()
+{
+	if [[ -z ${1} ]]; then
+		echo "usage: mksnap host [tag|id]";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	echo "Make an snapshot for ${1}"
+	echo "Please wait ..."
+	mport=$(( $mbport + $id ))
+	echo "savevm ${2}" | $nc localhost $mport > /dev/null 
+
+	echo "The Snapshot is created"
+}
+
+do_ldsnap()
+{
+	if [[ -z ${1} || -z ${2} ]]; then
+		echo "usage: ldsnap host tag|id";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	echo "Load snapshot for ${1} with tag|id=${2}"
+	echo "Please wait ..."
+	mport=$(( $mbport + $id ))
+	echo "loadvm ${2}" | $nc localhost $mport > /dev/null 
+}
+
+do_rmsnap()
+{
+	if [[ -z ${1} || -z ${2} ]]; then
+		echo "usage: rmsnap host tag|id";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	echo "delete snapshot from ${1} with tag|id=${2}"
+	echo "please wait ..."
+	mport=$(( $mbport + $id ))
+	echo "delvm ${2}" | $nc localhost $mport > /dev/null 
+}
+
+do_mon()
+{
+	if [[ -z ${1} ]]; then
+		echo "usage: mon host";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	mport=$(( $mbport + $id ))
+	telnet localhost $mport
+}
+
+do_ls()
+{
+	echo "list of installed hosts:"
+	echo "------------------------"
+	for I in `ls ${confdir}`; do
+		echo "${I%.pvm}"
+	done
+}
+
+do_ls_ids()
+{
+	printf "%-20s%s\n" "host" "id"
+	printf "%-20s%s\n" "----" "--"
+	for I in `ls ${confdir}`; do
+		_out="$_out${I%.pvm} "
+		_id=$($sed -n -e "/^id=\".*\"/p" "${confdir}/${I}" | cut -d "=" -f 2)
+		_id=${_id%\"}
+		_id=${_id#\"}
+		_out="$_out$_id\n"
+	done
+	echo -e "$_out" | awk '\
+		{
+			sort = "sort -k 2nr" 
+			printf "%-20s%d\n", $1, $2|sort 
+		}' | $sed -e "$ d"
+}
+
+do_lst()
+{
+	echo "list of virtual machines templates:"
+	for I in `ls ${bidir}`; do
+		_conf=`expr match "$I" ".*.pvm"`
+		if [[ $_conf -eq 0 ]]; then
+			echo "$I"
+		fi
+	done
+}
+
+check_run()
+{
+	run=`${0} status ${1}| $sed -n -e "/not running/p"`
+	if [[ -z $run ]]; then
+		echo "your host($1) is running ..."
+		echo "shutdown the host before any work ..."
+		exit 1
+	fi
+}
+
+do_rmvm()
+{
+	if [[ -z ${1} ]]; then
+		echo "usage: rmvm host";
+		exit 1;
+	fi
+	check_host ${1}
+	check_run ${1}
+	load_configfile "${1}"
+
+	echo -n "remove ${1}: Are you sure (y/*)? "
+	read yesno
+
+	case $yesno in
+		[yY]*)
+			rm -v "$confdir/${1}.pvm"
+			rm -v "$srvdir/${1}"
+			rm -frv "$vmdir/${1}"  
+			echo "${1} removed ..."
+			exit 0
+			;;
+		*)
+			exit 1
+	esac
+}
+
+do_info()
+{
+	if [[ -z ${1} ]]; then
+		echo "usage: info host";
+		exit 1;
+	fi
+	check_host ${1}
+
+	cat $confdir/${1}.pvm | $sed -e "/^#/d" -e "/^$/d" \
+		-e "/disktype/i\----------" \
+		-e "/has2eth/i\----------"
+}
+
+
+do_rename()
+{
+	if [[ -z ${1} || -z ${2} ]]; then
+		echo "usage: rename host new-name";
+		exit 1;
+	fi	
+	check_host ${1}
+	check_run ${1}
+	load_configfile "${1}"
+
+	echo "Generating config file ..."
+	$sed -e "s/${1}/${2}/g" \
+			"$confdir/${1}.pvm" > "$confdir/${2}.pvm" && rm -v "$confdir/${1}.pvm"
+
+	echo "Generating service file ..."
+	$sed -e "s/${1}/${2}/g" \
+			"$srvdir/${1}" > "$srvdir/${2}" && rm -v "$srvdir/${1}"
+	chmod +x "$srvdir/${2}"
+
+	mv $vmdir/${1} $vmdir/${2}
+	for i in `ls $vmdir/${2}/`; do
+		ir=${i/${1}/${2}}
+		if [[ $i != $ir ]]; then
+			mv -v $vmdir/${2}/$i $vmdir/${2}/$ir
+		fi
+	done
+		
+	echo "${1} renamed to ${2}"
+	echo "check ${2} config file for spacial changes (pvmctl edit ${2})"
+}
+
+do_clone()
+{
+	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
+		echo "usage: clone host clone-name clone-id";
+		exit 1;
+	fi	
+	check_host ${1}
+	check_run ${1}
+	load_configfile "${1}"
+
+	echo "Generating config file ..."
+	$sed -e "s/^id=\".*\"/id=\"${3}\"/" \
+		-e "s/${1}/${2}/g" \
+		-e "s/macaddr1=\".*\"/macaddr1=\"`$macgen`\"/" \
+		-e "s/macaddr2=\".*\"/macaddr2=\"`$macgen`\"/" \
+				$confdir/${1}.pvm > $confdir/${2}.pvm
+
+	echo "Generating service file ..."
+	$sed -e "s/${1}/${2}/g" \
+			"$srvdir/${1}" > "$srvdir/${2}" 
+	chmod +x "$srvdir/${2}"
+
+	echo "Creating disks, please wait ..."
+	mkdir "$vmdir/${2}"
+	for i in `ls $vmdir/${1}/`; do
+		ic=${i/${1}/${2}}
+		cp -v $vmdir/${1}/$i $vmdir/${2}/$ic
+	done
+
+	echo "clone(${2}) created ... "
+}
+
+#do_setdisk()
+#{
+#	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
+#		echo "usage: setdisk VMname IMAGEpath Order"
+#	echo tete;	
+#}
+##
+
+do_edit()
+{
+	# If the config file exists, and is writable by the user, then load it using $EDITOR
+	if [ -e ${confdir}/${1}.pvm ]; then
+		if [ -w ${confdir}/${1}.pvm ]; then
+			${EDITOR} ${confdir}/${1}.pvm
+		else
+			echo "Error: You don't have write permission for ${confdir}/${1}.pvm"
+			exit 1
+		fi
+	else
+		echo -n "${confdir}/${1}.pvm does not exist.  Would you like to create one from the template? (y/n) "
+		read yesno
+		case "${yesno}" in
+			[yY]*)
+				if [ -r ${template} ]; then
+					if [ -w ${confdir} ]; then
+						macaddr1=`$macgen`
+						macaddr2=`$macgen`
+						$sed -e "s/macaddr1=\"\"/macaddr1=\"$macaddr1\"/" \
+							-e "s/macaddr2=\"\"/macaddr2=\"$macaddr2\"/" \
+								${template} > ${confdir}/${1}.pvm
+						${EDITOR} ${confdir}/${1}.pvm
+
+						load_configfile "${1}"
+						mkdir $vmdir/${1}
+
+						echo "Generating service file ..."
+						$sed -e "s/MY_NAME/${1}/g" \
+								"$srvdir/vm-service-ORIG" > "$srvdir/${1}" 
+						chmod +x "$srvdir/${1}"
+						
+						echo "put your virtual machine images in $vmdir/${1}"
+					else
+						echo "Error: You don't have write permission for ${confdir}"
+						exit 1
+					fi
+				else
+					echo "Error: The template config file (${template}) doesn't exist or isn't readable."
+					exit 1
+				fi
+				;;
+			*)
+				echo "As you wish."
+				exit 1
+				;;
+		esac
+	fi
+}
+
+# Create A BaseImage Base Virtual Machine
+do_create()
+{
+	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
+		echo "usage: create vm_template host_name host_ID"
+		exit 1
+	fi
+
+	if [[ -f "${confdir}/${2}.pvm" ]]; then 
+		echo "Error: Your host exists right now ..."
+		exit 1
+	fi
+
+	if [ -r ${bidir}/${1} ]; then
+		# Check if is there any template configuration file
+		if [[ -f "${bidir}/${1}.pvm" ]]; then
+			$sed -e "s/${1}/${2}/g" \
+				-e "s/^id=\"##\"/id=\"${3}\"/" \
+							"${bidir}/${1}.pvm" > "/tmp/$2-beta"
+		else
+			$sed -e "s/disktype0=\"\"/disktype0=\"virtio\"/" \
+				-e "s/media0=\"\"/media0=\"disk\"/" \
+				-e "s/disk0=\"\"/disk0=\"${2}-OS.qcow2\"/" \
+				-e "s/^id=\"##\"/id=\"${3}\"/" \
+								$template > "/tmp/$2-beta"
+		fi
+		template="/tmp/${2}-beta"
+
+		do_edit "${2}"
+		$rm "/tmp/${2}-beta"
+
+		${kvmimg} create -b  "${bidir}/${1}" -f  qcow2   "${vmdir}/${2}/${2}-OS.qcow2"
+	else 
+		echo "Error: Can't read base image"
+		exit 1
+	fi
+}
+
+# Main script
+case "${1}" in
+	"start")
+		check_uid
+		do_start "${2}"
+		;;
+	"startvnc")
+		check_uid
+		do_start "${2}"
+		do_vnc "${2}"
+		;;
+	"stop")
+		check_uid
+		do_stop "${2}"
+		;;
+	"restart")
+		check_uid
+		do_stop "${2}"
+		${sleep} ${sleeptime}
+		do_start "${2}"
+		;;
+	"status")
+		do_status "${2}"
+		;;
+	"vnc")
+		do_vnc "${2}"
+		;;
+	"whichvnc")
+		do_whichvnc "${2}"
+		;;
+	"killvnc")
+		do_killvnc "${2}"
+		;;
+	"create")
+		do_create "${2}" "${3}" "${4}"
+		;;
+	"shutdown")
+		do_shutdown "${2}"
+		;;
+	"reset")
+		do_reset "${2}"
+		;;
+	"mkimg")
+		do_mkimg "${2}" "$3" "$4"
+		;;
+	"snaps")
+		do_snaps "${2}"
+		;;
+	"mksnap")
+		do_mksnap "${2}" "${3}"
+		;;
+	"ldsnap")
+		do_ldsnap "${2}" "${3}"
+		;;
+	"rmsnap")
+		do_rmsnap "${2}" "${3}"
+		;;
+	"ls")
+		if [[ -z ${2} ]]; then
+			do_ls
+		else
+			if [[ ${2} = "with-ids" ]]; then
+				do_ls_ids
+			fi
+		fi 
+		;;
+	"lst")
+		do_lst
+		;;
+	"rmvm")
+		do_rmvm ${2}
+		;;
+	"rename")
+		do_rename ${2} ${3}
+		;;
+	"clone")
+		do_clone ${2} ${3} ${4}
+		;;
+	"info")
+		do_info ${2}
+		;;
+	"mon")
+		do_mon "${2}"
+		;;
+	"edit")
+		do_edit "${2}"
+		;;
+	"help")
+		do_usage
+		;;
+	*)
+		do_usage
+		;;
+esac
+
+exit 0

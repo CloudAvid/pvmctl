@@ -5,7 +5,12 @@
 # Makes Vlans ifup scripts 
 # Thay may used in "qemu" command for net interfaces
 
-for i in `sed -e "/^#/d" "/PDNCo./etc/vlans"`; do
-	sed -e "s/NNN/$i/" "/PDNCo./Scripts/ifup-vlanNNN" > "/PDNCo./Scripts/ifup-vlan$i";
-	chmod +x "/PDNCo./Scripts/ifup-vlan$i";
+sed="/bin/sed"
+
+# Base Directory of PDNSoft Co. Environment
+basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
+
+for i in `$sed -e "/^#/d" "$basedir/etc/vlans"`; do
+	$sed -e "s/NNN/$i/" "$basedir/Scripts/ifup-vlanNNN" > "$basedir/Scripts/ifup-vlan$i";
+	chmod +x "$basedir/Scripts/ifup-vlan$i";
 done

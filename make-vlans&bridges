@@ -9,15 +9,17 @@ ifconfig="/sbin/ifconfig"
 modprobe="/sbin/modprobe"
 sed="/bin/sed"
 
+# Base Directory of PDNSoft Co. Environment
+basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
+
 # Trunk Ethernet
-teth=`$sed -e "/^#/d" /PDNCo./etc/trunk-eth`
+teth=`$sed -e "/^#/d" "$basedir/etc/trunk-eth"`
 
 $ifconfig $teth 0.0.0.0 up
 
 $modprobe "8021q" 
 
-# VLAN 9
-for i in `$sed -e "/^#/d" "/PDNCo./etc/vlans" `; do
+for i in `$sed -e "/^#/d" "$basedir/etc/vlans" `; do
 	$vconfig add $teth $i
 	$ifconfig $teth.$i 0.0.0.0 up
 
