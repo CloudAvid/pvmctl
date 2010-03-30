@@ -56,6 +56,7 @@ sudo="/usr/bin/sudo"
 vncviewer="/usr/bin/vncviewer"
 macgen="$basedir/Scripts/macgen.py"
 nc="/usr/bin/nc"
+mkdir="/bin/mkdir"
 
 EDITOR="/usr/bin/vim"
 
@@ -77,9 +78,6 @@ defifup="$basedir/Scripts/pvm-ifup"
 
 # Vlan ifups Prefix
 vlanifup="$basedir/Scripts/ifup-vlan"
-
-# VirtualMachines Servicee files dir
-srvdir="$basedir/Scripts/Services"
 
 # Adjust these as needed.  These are the min and max amount
 # of RAM to assign to a VM, in MB
@@ -957,7 +955,6 @@ do_rmvm()
 	case $yesno in
 		[yY]*)
 			rm -v "$confdir/${1}.pvm"
-			rm -v "$srvdir/${1}"
 			rm -frv "$vmdir/${1}"  
 			echo "${1} removed ..."
 			exit 0
@@ -995,11 +992,6 @@ do_rename()
 	$sed -e "s/${1}/${2}/g" \
 			"$confdir/${1}.pvm" > "$confdir/${2}.pvm" && rm -v "$confdir/${1}.pvm"
 
-	echo "Generating service file ..."
-	$sed -e "s/${1}/${2}/g" \
-			"$srvdir/${1}" > "$srvdir/${2}" && rm -v "$srvdir/${1}"
-	chmod +x "$srvdir/${2}"
-
 	mv $vmdir/${1} $vmdir/${2}
 	for i in `ls $vmdir/${2}/`; do
 		ir=${i/${1}/${2}}
@@ -1009,7 +1001,7 @@ do_rename()
 	done
 		
 	echo "${1} renamed to ${2}"
-	echo "check ${2} config file for spacial changes (pvmctl edit ${2})"
+	echo "check ${2} config file for spacial changes"
 }
 
 do_clone()
@@ -1029,11 +1021,6 @@ do_clone()
 		-e "s/macaddr2=\".*\"/macaddr2=\"`$macgen`\"/" \
 				$confdir/${1}.pvm > $confdir/${2}.pvm
 
-	echo "Generating service file ..."
-	$sed -e "s/${1}/${2}/g" \
-			"$srvdir/${1}" > "$srvdir/${2}" 
-	chmod +x "$srvdir/${2}"
-
 	echo "Creating disks, please wait ..."
 	mkdir "$vmdir/${2}"
 	for i in `ls $vmdir/${1}/`; do
@@ -1044,20 +1031,19 @@ do_clone()
 	echo "clone(${2}) created ... "
 }
 
-#do_setdisk()
-#{
-#	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
-#		echo "usage: setdisk VMname IMAGEpath Order"
-#	echo tete;	
-#}
-##
-
 do_edit()
 {
 	# If the config file exists, and is writable by the user, then load it using $EDITOR
 	if [ -e ${confdir}/${1}.pvm ]; then
 		if [ -w ${confdir}/${1}.pvm ]; then
 			${EDITOR} ${confdir}/${1}.pvm
+
+			# test existance of "VM" directory
+			# if doesn't exist, create him.
+			load_configfile "$1"
+			if [[ ! -d "$vmdir/$1" ]]; then
+				$mkdir "$vmdir/$1"
+			fi
 		else
 			echo "Error: You don't have write permission for ${confdir}/${1}.pvm"
 			exit 1
@@ -1077,13 +1063,8 @@ do_edit()
 						${EDITOR} ${confdir}/${1}.pvm
 
 						load_configfile "${1}"
-						mkdir $vmdir/${1}
+						$mkdir $vmdir/${1}
 
-						echo "Generating service file ..."
-						$sed -e "s/MY_NAME/${1}/g" \
-								"$srvdir/vm-service-ORIG" > "$srvdir/${1}" 
-						chmod +x "$srvdir/${1}"
-						
 						echo "put your virtual machine images in $vmdir/${1}"
 					else
 						echo "Error: You don't have write permission for ${confdir}"
