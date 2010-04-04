@@ -988,6 +988,11 @@ do_rename()
 	check_run ${1}
 	load_configfile "${1}"
 
+	if [[ -f "$confdir/${2}.pvm" ]]; then
+		echo "Error: New Machine Exists right now !!."
+		exit 1
+	fi
+
 	echo "Generating config file ..."
 	$sed -e "s/${1}/${2}/g" \
 			"$confdir/${1}.pvm" > "$confdir/${2}.pvm" && rm -v "$confdir/${1}.pvm"
