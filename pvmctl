@@ -58,7 +58,7 @@ macgen="$basedir/Scripts/macgen.py"
 nc="/usr/bin/nc"
 mkdir="/bin/mkdir"
 
-EDITOR="/usr/bin/vim"
+EDITOR="/usr/bin/vim -n"
 
 # Directories used in this script
 piddir="$basedir/var/run/pvm"
@@ -415,8 +415,6 @@ do_start()
 		confdrive3="-drive index=3,media=${confmedia3},if=${confdisktype3},file=${confdisk3}"
 	fi
 
-	# Added by PDNCo. HMT
-	# 1388-11-04
 	# Set Monitoring on telnet
 	confmonitor="telnet::$(( $mbport + $id )),server,nowait,nodelay";
 
@@ -441,15 +439,6 @@ do_start()
 		esac
 	fi
 
-	# If booting off a CD-ROM, make "reboot" command act like "poweroff" command
-	if [ ! -z ${confmedia2} ]; then
-		if [ ${confboot} = "d" -a ${confmedia2} = "cdrom" ]; then
-			confreboot="-no-reboot"
-		else
-			confreboot=""
-		fi
-	fi
-
 	# Check which virtual NIC chipset to use
 	case "${nic}" in
 		rtl8139)
@@ -466,9 +455,6 @@ do_start()
 			;;
 	esac
 
-	# Added By PDNSoft Co.
-	# by hmt
-	# Network Config
 	eth1_script=$defifup
 	if [[ $eth1_vlan != "" ]]; then
 		eth1_script="$vlanifup$eth1_vlan";
@@ -562,7 +548,6 @@ do_start()
 		-monitor ${confmonitor} \
 		${confusb1} \
 		${confacpi} \
-		${confreboot} \
 		${confdrive0} \
 		${confdrive1} \
 		${confdrive2} \
@@ -1022,8 +1007,8 @@ do_clone()
 	echo "Generating config file ..."
 	$sed -e "s/^id=\".*\"/id=\"${3}\"/" \
 		-e "s/${1}/${2}/g" \
-		-e "s/macaddr1=\".*\"/macaddr1=\"`$macgen`\"/" \
-		-e "s/macaddr2=\".*\"/macaddr2=\"`$macgen`\"/" \
+		-e "s/^macaddr1=\".*\"/macaddr1=\"`$macgen`\"/" \
+		-e "s/^macaddr2=\".*\"/macaddr2=\"`$macgen`\"/" \
 				$confdir/${1}.pvm > $confdir/${2}.pvm
 
 	echo "Creating disks, please wait ..."
@@ -1062,8 +1047,8 @@ do_edit()
 					if [ -w ${confdir} ]; then
 						macaddr1=`$macgen`
 						macaddr2=`$macgen`
-						$sed -e "s/macaddr1=\"\"/macaddr1=\"$macaddr1\"/" \
-							-e "s/macaddr2=\"\"/macaddr2=\"$macaddr2\"/" \
+						$sed -e "s/^macaddr1=\".*\"/macaddr1=\"$macaddr1\"/" \
+							-e "s/^macaddr2=\".*\"/macaddr2=\"$macaddr2\"/" \
 								${template} > ${confdir}/${1}.pvm
 						${EDITOR} ${confdir}/${1}.pvm
 
@@ -1105,13 +1090,13 @@ do_create()
 		# Check if is there any template configuration file
 		if [[ -f "${bidir}/${1}.pvm" ]]; then
 			$sed -e "s/${1}/${2}/g" \
-				-e "s/^id=\"##\"/id=\"${3}\"/" \
+				-e "s/^id=\".*\"/id=\"${3}\"/" \
 							"${bidir}/${1}.pvm" > "/tmp/$2-beta"
 		else
-			$sed -e "s/disktype0=\"\"/disktype0=\"virtio\"/" \
-				-e "s/media0=\"\"/media0=\"disk\"/" \
-				-e "s/disk0=\"\"/disk0=\"${2}-OS.qcow2\"/" \
-				-e "s/^id=\"##\"/id=\"${3}\"/" \
+			$sed -e "s/^disktype0=\".*\"/disktype0=\"virtio\"/" \
+				-e "s/^media0=\".*\"/media0=\"disk\"/" \
+				-e "s/^disk0=\".*\"/disk0=\"${2}-OS.qcow2\"/" \
+				-e "s/^id=\".*\"/id=\"${3}\"/" \
 								$template > "/tmp/$2-beta"
 		fi
 		template="/tmp/${2}-beta"
@@ -1184,13 +1169,14 @@ case "${1}" in
 		do_rmsnap "${2}" "${3}"
 		;;
 	"ls")
-		if [[ -z ${2} ]]; then
-			do_ls
-		else
-			if [[ ${2} = "with-ids" ]]; then
-				do_ls_ids
-			fi
-		fi 
+		do_ls_ids
+		#if [[ -z ${2} ]]; then
+		#	do_ls
+		#else
+		#	if [[ ${2} = "with-ids" ]]; then
+		#		do_ls_ids
+		#	fi
+		#fi 
 		;;
 	"lst")
 		do_lst
