@@ -3,17 +3,10 @@
 # By: HMT
 # Creates Vlan Ethernets and their associated bridges
 
-vconfig="/sbin/vconfig"
-brctl="/usr/sbin/brctl"
-ifconfig="/sbin/ifconfig"
-modprobe="/sbin/modprobe"
-sed="/bin/sed"
-
-# Base Directory of PDNSoft Co. Environment
-basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
+. /etc/pvm.conf
 
 # Trunk Ethernet
-teth=`$sed -e "/^#/d" "$basedir/etc/trunk-eth"`
+teth=$( read_config_file "$basedir/etc/trunk-eth" )
 
 $ifconfig $teth 0.0.0.0 up
 
@@ -24,7 +17,9 @@ for i in `$sed -e "/^#/d" "$basedir/etc/vlans" `; do
 	$ifconfig $teth.$i 0.0.0.0 up
 
 	$brctl addbr brv$i
-	$ifconfig brv$i 0.0.0.0 up
+	if [[ "$?" -eq "0" ]]; then
+		$ifconfig brv$i 0.0.0.0 up
+	fi
 
 	$brctl addif brv$i $teth.$i
 	$brctl stp brv$i on

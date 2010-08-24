@@ -1,0 +1,13 @@
+#!/bin/bash
+
+. /etc/pvm.conf
+
+log[0]="$cf_backup_log_file"
+log[1]="$cf_vm_services_log_file"
+log[2]="$cf_rsite_sync_log_file"
+
+num_logs=${#log[@]}
+
+for((i=0;i<$num_logs;i++)); do
+	rotate_log_file "${log[i]}" 
+done

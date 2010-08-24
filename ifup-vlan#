@@ -1,9 +1,7 @@
 #!/bin/sh
 #usage: "vlan Number" "VM network interface"
 
-vconfig="/sbin/vconfig"
-brctl="/usr/sbin/brctl"
-ifconfig="/sbin/ifconfig"
+. /etc/pvm.conf 
 
 if [[ -z $1 || -z $2 ]]; then
 	echo "usage: ifup-vlan# vlan# vmnet-tap"

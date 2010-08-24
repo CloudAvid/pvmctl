@@ -1,0 +1,39 @@
+#!/bin/bash
+#  This Script Makes Snapshots from "VM"s that are running on the local host.
+#  He also rotates Snaps: Remove the Oldest Snap, If Number of 
+#+ Snapshots be Greater then then defined maximum.
+
+. /etc/pvm.conf
+
+max_snaps="7"
+snaps_tag="__Auto_"
+
+vms=$( $pvmctl "status" | $sed -e "1d" )
+exclude_vms=( $( read_config_file "$cf_snap_exclude" ) )
+
+#  This function will removes oldest snapshot If the number of host snapshots 
+#+ be greater then $max_snaps.
+#  usage: rotate_snaps host
+rotate_snaps()
+{
+	_no_snaps=$( $pvmctl "snaps" "$1"  | $sed -n -e "/$snaps_tag[0-9]*/p"  | $wc -l )
+	if (( $_no_snaps < $max_snaps )); then
+		return 0
+	fi
+
+	_oldest_snap=$( $pvmctl "snaps" "$1"  | $sed -n -e "/$snaps_tag[0-9]*/p"  | \
+				$sed -n -e "1p" | $cut -d ' ' -f 1 )
+	echo "Remove oldest snapshot of \"$1\": id=$_oldest_snap."
+	$pvmctl "rmsnap" "$1" "$_oldest_snap"
+	return $?
+}
+
+for i in $vms; do
+	search_array "$i" "${exclude_vms[@]}"
+	if [[ $? -eq 0 ]]; then
+		echo "Process \"$i\" ..."
+		rotate_snaps "$i"
+		$pvmctl "mksnap" "$i" "$snaps_tag$RANDOM"
+	fi
+done
+

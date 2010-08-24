@@ -7,12 +7,8 @@
 #
 # Paths to pvmctl and the auto-start directory:
 
-sed="/bin/sed"
+. /etc/pvm.conf
 
-# Base Directory of PDNSoft Co. Environment
-basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
-
-pvmctl="$basedir/Scripts/pvmctl"
 autodir="$basedir/etc/pvm"
 
 makevlans="$basedir/Scripts/make-vlans&bridges"

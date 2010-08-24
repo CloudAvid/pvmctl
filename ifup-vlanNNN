@@ -1,8 +1,6 @@
 #!/bin/sh
 # kvm ifup script ..
-sed="/bin/sed"
 
-# Base Directory of PDNSoft Co. Environment
-basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
+. /etc/pvm.conf
 
 "$basedir/Scripts/ifup-vlan#" NNN "$1"

@@ -3,12 +3,12 @@
 # An ID number for the VM.
 # This is used to generate the tap device in the host, and
 # the VNC port for the VM's console, 
-# and also telnet port for monito console.
+# and also telnet port for monitor console.
 id="##"
 
 # VM Storage ID
 # Defines storage of it's images ...
-# Storage repository placed at $bdir/etc/VMStorages
+# Storage repository placed at $basedir/etc/VMStorages
 sid="1"
 
 # How much RAM to associate with the VM.
@@ -36,7 +36,7 @@ mouse="tablet"
 nic="virtio"
 
 # Which virtual block device to boot from
-# Values:  a=floppy0, b=floppy1, c=disk0, d=cdrom
+# Values:  a=floppy0, b=floppy1, c=disk[0], d=cdrom
 # Default: c
 boot="c"
 
@@ -56,7 +56,7 @@ host_usb1=""
 # and paravirtualised block devices.
 
 # Values  for media:    disk, cdrom
-# Default for disktype: disk
+# Default for media:    disk
 
 # Values  for disk:     a path to either a disk image file, or an LVM logical volume
 # 	Path can be: Full path (start with "/") or Relative
@@ -64,42 +64,36 @@ host_usb1=""
 # Default for disk:     /dev/mapper/vol0-${host}
 
 # The first virtual block device
-# For IDE devices, this is primary master.
-disktype0=""
-media0=""
-disk0=""
+disktype[0]=""
+media[0]=""
+disk[0]=""
 
 # The second virtual block device
-# For IDE devices, this is primary slave.
-disktype1=""
-media1=""
-disk1=""
+disktype[1]=""
+media[1]=""
+disk[1]=""
 
 # The third virtual block device
-# For IDE devices, this is secondary master
-# USE THIS FOR CD-ROMS OR PERFORMANCE WILL SUFFER GREATLY!!
-disktype2=""
-media2=""
-disk2=""
+disktype[2]=""
+media[2]=""
+disk[2]=""
 
 # The fourth virtual block device
-# For IDE devices, this is secondary slave
-disktype3=""
-media3=""
-disk3=""
+disktype[3]=""
+media[3]=""
+disk[3]=""
 
-# Your VM Has Tow ethernet?
-# yes or no
-has2eth="no"
+# you can define more disk as you wish ...
+# ...
 
-# VLAN Number for first ethernet that must attach to
-eth1_vlan="9"
-# VLAN Number for second ethernet that must attach to
-eth2_vlan=""
+#  Define Virtual Networks for machine ...
+#  Values of each vlan may be:
+#+ "":				the default ethernet script will be used for this interface
+#+ "VLAN-ID": 			ethernet script for this vlan will be used for this interface
+#+ "/full/path/to/script"	defines the full path to the custom script
+vlan[0]="9"
+#vlan[1]=""
 
 # Network MacAddress, 
 # Thair Values will be created by pvmctl at creation(edit, clone) time.
-macaddr1=""
-macaddr2=""
-
-
+# macaddr[0]

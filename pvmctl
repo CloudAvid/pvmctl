@@ -27,48 +27,7 @@
 #	* Add "sid" parameter support
 #	* Add "host_usb1" parameter support
 
-sed="/bin/sed"
-
-# Base Directory of PDNSoft Co. Environment
-basedir=`$sed -e "/^#/d" /etc/PDNSoftCo.bdir`
-
-# Monitor base port
-# Monitor Port of virtual machines will be: mbport + id
-mbport=2200
-
-awk="/usr/bin/awk"
-basename="/bin/basename"
-brctl="/usr/sbin/brctl"
-cat="/bin/cat"
-chmod="/bin/chmod"
-cp="/bin/cp"
-grep="/bin/grep"
-kill="/bin/kill"
-#kvm="$basedir/usr/bin/qemu-system-x86_64"
-kvm="/usr/libexec/qemu-kvm"
-#kvmimg="$basedir/usr/bin/qemu-img"
-kvmimg="/usr/bin/qemu-img"
-pgrep="/usr/bin/pgrep"
-pkill="/usr/bin/pkill"
-rm="/bin/rm"
-sleep="/bin/sleep"
-sudo="/usr/bin/sudo"
-vncviewer="/usr/bin/vncviewer"
-macgen="$basedir/Scripts/macgen.py"
-nc="/usr/bin/nc"
-mkdir="/bin/mkdir"
-
-EDITOR="/usr/bin/vim -n"
-
-# Directories used in this script
-piddir="$basedir/var/run/pvm"
-confdir="$basedir/etc/pvm"
-
-# Directory of Virtualization Base Images for VM Creation
-bidir="$basedir/VMStorage/BIs"
-# Directory for Images of Virtuals 
-vmdir="$basedir/VMStorage/VMs"
-isodir="$basedir/VMStorage/ISOs"
+. /etc/pvm.conf
 
 # The file to use as a template when creating new VM configs
 template="$basedir/Scripts/template.pvm"
@@ -79,8 +38,8 @@ defifup="$basedir/Scripts/pvm-ifup"
 # Vlan ifups Prefix
 vlanifup="$basedir/Scripts/ifup-vlan"
 
-# Adjust these as needed.  These are the min and max amount
-# of RAM to assign to a VM, in MB
+#  Adjust these as needed.  These are the min and max amount
+#+ of RAM to assign to a VM, in MB
 minmem="128"
 maxmem="16384"
 
@@ -90,7 +49,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( ${basename} $0 )
-scriptversion="1.0"
+scriptversion="2.0"
 
 # Functions used in the script
 load_defaults()
@@ -127,19 +86,14 @@ load_defaults()
 
 load_configfile()
 {
-	# Check if the host config file exists, and suck in the contents if it does
+	# suck in the content of config file
 	if [ -r ${confdir}/${1}.pvm ]; then
 		. ${confdir}/${1}.pvm
-	else
-		echo "Error: Config file for ${1} (${confdir}/${1}.pvm) doesn't exist or is not readable."
-		exit 1
-	fi
 
-	if [[ -f $basedir/etc/VMStorages ]]; then
-		for i in `sed -e "/^#/d" $basedir/etc/VMStorages`; do
-			__id=`echo $i | cut -s -d ";" -f 1`;
-			if [[ $__id -eq sid ]]; then
-				__path=`echo $i | cut -s -d ";" -f 2`;
+		for __i in $( read_config_file "$cf_VMStorages" ); do
+			__id=`echo $__i | cut -s -d ";" -f 1`;
+			if [[ $__id -eq $sid ]]; then
+				__path=`echo $__i | cut -s -d ";" -f 2`;
 				vmdir="$__path"
 			fi
 		done
@@ -151,16 +105,12 @@ check_host()
 	# Check if a VM host name was given on the commandline
 	if [ -z "${1}" ]; then
 		echo "Error: Missing host to work on."
-		echo ""
-		#do_usage
 		exit 1
 	fi
 
 	# Check if the host name given corresponds to a configured VM
 	if [ ! -e ${confdir}/${1}.pvm ]; then
-		echo "Error: The host you want to manage (${1}) doesn't have a config file.  ${confdir}/${1}.pvm doesn't exist."
-		echo ""
-		#do_usage
+		echo "Error: The host you want to manage (${1}) doesn't exist. "
 		exit 1
 	fi
 }
@@ -178,244 +128,142 @@ do_start()
 	# Will exit if the config file doesn't exist
 	load_configfile "${1}"
 
+	# Check status of the host
+	${0} status ${1} > /dev/null
+	if [[ $? -eq "0" ]]; then
+		# If he is running, all is ok, just exit with 0.
+		echo "Host is running right now ..."
+		exit 0
+	fi
+
 	# Check that an ID is set
 	if [ -z ${id} ]; then
 		echo "Error: ID number for this host has not been set."
 		exit 1
 	fi
 
-#	# Check that a host name is set
-#	if [ -z ${host} ]; then
-#		echo "Error: Host name not set in the config file."
-#		exit 1
-#	fi
-
 	# Set host name to config file name
 	host="${1}"
 
-	# Check if there is a primary virtual block device in the config
-	if [ ! -z ${disk0} ]; then
-		# Check if path is Absolute?
-		if [[ $(expr ${disk0} : '/') -eq 0 ]]; then
-			# Check if disk is cdrom (iso)?
-			if [[ ${disk0%%.iso} != ${disk0} ]]; then
-				disk0="${isodir}/${disk0}"
-			else
-				disk0="${vmdir}/${host}/${disk0}"
-			fi
+	#  This variables defines the index of the first disk in each category.
+	#  We use index 2 for first cdrom, to achive better performance.
+	cd_index="2" #cdrom
+	ide_index="0"
+	scsi_index="0"
+	virtio_index="0"
+	
+	# Number of virtual drives
+	no_vdisk="${#disk[@]}"
+	# Number of processed virtula drives
+	np_vdisk=0
+	
+	for (( i = 0; "$np_vdisk" < "$no_vdisk"; ++i)); do
+		# Jump from NULL elements
+		if [[ ${disk[i]-__NULL__} = "__NULL__" ]]; then
+			continue
 		fi
+		np_vdisk=$(( ++np_vdisk ))
 
-		# Check if the primary block device exists in the host.
-		if [ ! -e ${disk0} ]; then
-			echo "Error:  Primary virtual drive (${disk0}) doesn't exist or isn't readable."
-			exit 1
-		else
-			confdisk0=${disk0}
+		# Check if is there any disk string
+		disk="${disk[i]}"
+		if [[ -z "$disk" ]]; then 
+			continue
 		fi
 
 		# Check what kind of media to use for the virtual drive
-		case "${media0}" in
+		case "${media[i]}" in
 			disk)
-				confmedia0="disk"
+				media="disk"
 				;;
 			cdrom)
-				confmedia0="cdrom"
+				media="cdrom"
 				;;
 			*)
-				confmedia0=${defmedia}
+				echo "Error: Bad media type for disk($i)."
+				exit 1
 				;;
 		esac
 
-		# Check what kind of interface to use for the virtual drive
-		case "${disktype0}" in
-			ide)
-				confdisktype0="ide"
-				;;
-			scsi)
-				confdisktype0="scsi"
-				;;
-			virtio)
-				confdisktype0="virtio"
-				;;
-			*)
-				confdisktype0=${defdisktype}
-				;;
-		esac
-
-		# Check whether to use extboot support for the virtual drive
-		if [ ${confdisktype0} = "scsi" -o ${confdisktype0} = "virtio" ]; then
-			confextboot=",boot=on"
-		else
-			confextboot=""
+		#  Check if disk path is Absolute? if not, 
+		#+ prepend defined pathes to disk.
+		if [[ $(expr ${disk} : '/') -eq 0 ]]; then
+			case "$media" in
+			disk) disk="${vmdir}/${host}/${disk}" ;;
+			cdrom) disk="${isodir}/${disk}" ;;
+			esac
 		fi
 
+		#  Check existance of the disk..
+		if [[ ! -e "$disk" ]]; then
+			echo "Error: disk($i) doesn't exist or isn't readable ($disk)."
+			exit 1
+		fi
+
+		extboot=""
+		# Determine type of the disk
+		case "${disktype[i]}" in
+			ide)
+				disktype="ide"
+
+				# define index of ide disk in complex of disks and cdroms
+				case "$media" in
+				disk) index="$ide_index" 
+					ide_index=$(( ++ide_index ))
+					# NOTE: index 2 is reserved for cdroms
+					if (( $ide_index == "2" )); then
+						if (( $cd_index != 2 )); then
+							ide_index=$cd_index
+						else
+							ide_index=$(( ++ide_index ))
+						fi
+					fi
+					;;
+				cdrom)
+					if (( $cd_index != 2 && $ide_index >= $cd_index )); then
+						index="$ide_index"
+						ide_index=$(( ++ide_index ))
+					else
+						index="$cd_index"
+						cd_index=$(( ++cd_index ))
+					fi
+					;;
+				esac
+				;;
+			virtio)
+				disktype="virtio"
+				index="$virtio_index"
+				if [[ $index = "0" && $ide_index = 0 ]]; then
+					extboot=",boot=on"
+				fi
+
+				virtio_index=$(( ++virito_index ))
+				;;
+			scsi)
+				disktype="scsi"
+				index="$scsi_index"
+				if [[ $index = "0" && $ide_index = "0" && $virtio_index = "0" ]]; then
+					extboot=",boot=on"
+				fi
+
+				scsi_index=$(( ++scsi_index ))
+				;;
+			*)
+				echo "Error: Bad disk type for disk($i)."
+				exit 1
+				;;
+		esac
+
+
 		# Build the drive entry that will be passed to kvm
-		confdrive0="-drive index=0,media=${confmedia0},if=${confdisktype0}${confextboot},file=${confdisk0}"
-	else
-		echo "Error:  disk0 not set in config file.  Can't boot without a primary hard drive."
+		drives="$drives -drive index=$index,media=$media,if=${disktype}${extboot},file=${disk}"
+	done
+
+	if [[ ($ide_index -eq 0) && ($virtio_index -eq 0) && ($scsi_index -eq 0) ]]; then
+		echo "Error: there isn't any boot device(disk) ..."
 		exit 1
 	fi
 
-	# Check if there is a second virtual block device in the config
-	if [ ! -z ${disk1} ]; then
-		# Check if path is Absolute?
-		if [[ $(expr ${disk1} : '/') -eq 0 ]]; then
-			# Check if disk is cdrom (iso)?
-			if [[ ${disk1%%.iso} != ${disk1} ]]; then
-				disk1="${isodir}/${disk1}"
-			else
-				disk1="${vmdir}/${host}/${disk1}"
-			fi
-		fi
-
-		# Check if the primary block device exists in the host.
-		if [ ! -e ${disk1} ]; then
-			echo "Error:  Second virtual drive (${disk1}) doesn't exist or isn't readable."
-			exit 1
-		else
-			confdisk1=${disk1}
-		fi
-
-		# Check what kind of media to use for the virtual drive
-		case "${media1}" in
-			disk)
-				confmedia1="disk"
-				;;
-			cdrom)
-				confmedia1="cdrom"
-				;;
-			*)
-				confmedia1=${defmedia}
-				;;
-		esac
-
-		# Check what kind of interface to use for the virtual drive
-		case "${disktype1}" in
-			ide)
-				confdisktype1="ide"
-				;;
-			scsi)
-				confdisktype1="scsi"
-				;;
-			virtio)
-				confdisktype1="virtio"
-				;;
-			*)
-				confdisktype1=${defdisktype}
-				;;
-		esac
-
-		# Build the drive entry that will be passed to kvm
-		confdrive1="-drive index=1,media=${confmedia1},file=${confdisk1},if=${confdisktype1}"
-	fi
-
-	# Check if there is a third virtual block device in the config
-	if [ ! -z ${disk2} ]; then
-		# Check if path is Absolute?
-		if [[ $(expr ${disk2} : '/') -eq 0 ]]; then
-			# Check if disk is cdrom (iso)?
-			if [[ ${disk2%%.iso} != ${disk2} ]]; then
-				disk2="${isodir}/${disk2}"
-			else
-				disk2="${vmdir}/${host}/${disk2}"
-			fi
-		fi
-
-		# Check if the primary block device exists in the host.
-		if [ ! -e ${disk2} ]; then
-			echo "Error:  Third virtual drive (${disk2}) doesn't exist or isn't readable."
-			exit 1
-		else
-			confdisk2=${disk2}
-		fi
-
-		# Check what kind of media to use for the virtual drive
-		case "${media2}" in
-			disk)
-				confmedia2="disk"
-				;;
-			cdrom)
-				confmedia2="cdrom"
-				;;
-			*)
-				confmedia2=${defmedia}
-				;;
-		esac
-
-		# Check what kind of interface to use for the virtual drive
-		case "${disktype2}" in
-			ide)
-				confdisktype2="ide"
-				;;
-			scsi)
-				confdisktype2="scsi"
-				;;
-			virtio)
-				confdisktype2="virtio"
-				;;
-			*)
-				confdisktype2=${defdisktype}
-				;;
-		esac
-
-		# Build the drive entry that will be passed to kvm
-		confdrive2="-drive index=2,media=${confmedia2},if=${confdisktype2},file=${confdisk2}"
-	fi
-
-	# Check if there is a fourth virtual block device in the config
-	if [ ! -z ${disk3} ]; then
-		# Check if path is Absolute?
-		if [[ $(expr ${disk3} : '/') -eq 0 ]]; then
-			# Check if disk is cdrom (iso)?
-			if [[ ${disk3%%.iso} != ${disk3} ]]; then
-				disk3="${isodir}/${disk3}"
-			else
-				disk3="${vmdir}/${host}/${disk3}"
-			fi
-		fi
-
-		# Check if the primary block device exists in the host.
-		if [ ! -e ${disk3} ]; then
-			echo "Error:  Fourth virtual drive (${disk3}) doesn't exist or isnt' readable."
-			exit 1
-		else
-			confdisk3=${disk3}
-		fi
-
-		# Check what kind of media to use for the virtual drive
-		case "${media3}" in
-			disk)
-				confmedia3="disk"
-				;;
-			cdrom)
-				confmedia3="cdrom"
-				;;
-			*)
-				confmedia3=${defmedia}
-				;;
-		esac
-
-		# Check what kind of interface to use for the virtual drive
-		case "${disktype3}" in
-			ide)
-				confdisktype3="ide"
-				;;
-			scsi)
-				confdisktype3="scsi"
-				;;
-			virtio)
-				confdisktype3="virtio"
-				;;
-			*)
-				confdisktype3=${defdisktype}
-				;;
-		esac
-
-		# Build the drive entry that will be passed to kvm
-		confdrive3="-drive index=3,media=${confmedia3},if=${confdisktype3},file=${confdisk3}"
-	fi
-
-	# Set Monitoring on telnet
+	# Set Monitoring to telnet
 	confmonitor="telnet::$(( $mbport + $id )),server,nowait,nodelay";
 
 	# Check which device to boot from
@@ -455,22 +303,33 @@ do_start()
 			;;
 	esac
 
-	eth1_script=$defifup
-	if [[ $eth1_vlan != "" ]]; then
-		eth1_script="$vlanifup$eth1_vlan";
-	fi
-	confnet="-net nic,macaddr=$macaddr1,vlan=0,model=${confnic} \
-		-net tap,vlan=0,ifname=vm${id}0,script=$eth1_script "
-
-	if [[ $has2eth == "yes" ]]; then
-		eth2_script=$defifup
-		if [[ $eth2_vlan != "" ]]; then
-			eth2_script="$vlanifup$eth2_vlan"
+	# Make ethernet cards
+	# Number of Ethernet Cards
+	no_eths="${#vlan[@]}"
+	# Number of Processed Ethernet Cards
+	np_eths=0
+	for (( i =0; $np_eths < $no_eths; ++i)); do
+		if [[ ${vlan[i]-__NULL__} = "__NULL__" ]]; then
+			continue;
 		fi
+		np_eths=$(( ++np_eths ))
 
-		confnet="$confnet -net nic,macaddr=$macaddr2,vlan=1,model=${confnic} \
-			-net tap,vlan=1,ifname=vm${id}1,script=$eth2_script ";
-	fi
+		eth_script="$defifup"
+		if [[ ! -z "${vlan[i]}" ]]; then
+			if [[ $(expr ${vlan[i]} : '/') -eq 0 ]]; then
+				eth_script="$vlanifup${vlan[i]}"
+			else
+				# vlan[i] contains full path to the eth. script
+				eth_script="${vlan[i]}"
+			fi
+		fi
+		if [[ ! -x "$eth_script" ]]; then
+			echo "Error: ethernet script \"$eth_script\" is not executable"
+			exit 1
+		fi
+		confnet=" $confnet -net nic,macaddr=${macaddr[i]},vlan=$i,model=${confnic} \
+				-net tap,vlan=$i,ifname=vm${id}$i,script=$eth_script"
+	done
 
 	# Check which virtual mouse chipset to use
 	case "${mouse}" in
@@ -518,7 +377,7 @@ do_start()
 			;;
 	esac
 
-	# Check the amount of RAM to assign to the VM
+	# Check amount of RAM to be assigned to the VM
 	if [ ${mem} -lt ${minmem} -o ${mem} -gt ${maxmem} ]; then
 		echo "Warning: Virtual RAM is not between ${minmem} and ${maxmem}.  Setting virtual RAM to ${defmem}."
 		confmem=${defmem}
@@ -548,13 +407,10 @@ do_start()
 		-monitor ${confmonitor} \
 		${confusb1} \
 		${confacpi} \
-		${confdrive0} \
-		${confdrive1} \
-		${confdrive2} \
-		${confdrive3}
+		${drives} 
 	# check if the vm is running?
 	if [[ $? -eq 1 ]]; then
-		echo "Error: VM for ${1} not started"
+		echo "Error: VM for ${1} doesn't start"
 		exit 1
 	fi
         # Reset the permissions on the PID file
@@ -688,11 +544,16 @@ do_usage()
 	        ${scriptname} rename   host   new_name             - rename host to new_name
 	        ${scriptname} clone    host   clone_name clone_id  - creating a clone from the host
 	
+	        ${scriptname} create   template host_name host_id  - Create A virtual machine from template
+
+	        ${scriptname} mkbase   host  [base-name]           - Create A virtual Template(base image) from host
+	        ${scriptname} rmbase   base_name                   - Remove the Virtual Templae (base image) 
+	        ${scriptname} mkiso    iso_name                    - Create An ISO image from the CD in Local CDROM(local)
+	        ${scriptname} rmiso    iso_name                    - Remove the ISO image
+
 	        ${scriptname} ls                                   - print out list of virtual machines
 	        ${scriptname} lst                                  - print out list of Virtual Templates 
 	        ${scriptname} lscd                                 - print out list of CD Images (ISO files)
-
-	        ${scriptname} create   template host_name host_id  - Create A virtual machine from template
 
 	        ${scriptname} help                                 - show this usage
 
@@ -954,6 +815,67 @@ do_lscd()
 	done
 }
 
+do_mkiso()
+{
+	if [[ -z "$1" ]]; then
+		echo "usage: mkiso iso_name"
+		exit 1
+	fi
+
+	_iso="$1"
+	if [[ $(expr $1 : '/') -eq "0" ]]; then
+		_iso="$isodir/$1"
+	fi
+
+	if [[ -f "$_iso" ]]; then
+		echo -n "Target File exist ... Replace it (y/*)? "
+		read yesno
+
+		case $yesno in
+			[yY]*)
+				;;
+			*)
+				exit 0
+				;;
+		esac
+	fi
+
+	$dd if="/dev/cdrom" of="$_iso"
+	exit $?
+}
+
+do_rmiso()
+{
+	if [[ -z "$1" ]]; then
+		echo "usage: rmiso iso_name"
+		exit 1
+	fi
+
+	_iso="$1"
+	if [[ $(expr $1 : '/') -eq "0" ]]; then
+		_iso="$isodir/$1"
+	fi
+
+	if [[ -f "$_iso" ]]; then
+		echo -n "Delete \"$1\", Are you sure (y/*)? "
+		read yesno
+
+		case $yesno in
+			[yY]*)
+				$rm -v "$_iso"
+				exit $?
+				;;
+			*)
+				exit 0
+				;;
+		esac
+	fi
+
+	echo "There isn't any "ISO" with this name !!!"
+	exit 1
+	
+}
+
 check_run()
 {
 	${0} status ${1} > /dev/null
@@ -1034,6 +956,59 @@ do_rename()
 	echo "check ${2} config file for spacial changes"
 }
 
+#  This functio verifyes Ethernet Cards for any change in them and 
+#+ Generate new MACaddresses if required.
+#  Usage: review_eths host
+verify_eths()
+{
+	# unset before loaded arrays
+	unset vlan
+	unset macaddr
+
+	load_configfile "${1}"
+
+	# Number Of ethernet cards
+	no_eths=${#vlan[@]}
+	# Number Of Processed ethernet cards
+	np_eths=0
+
+	_any_change=0
+	for ((_i=0; $np_eths < $no_eths; ++_i)); do
+		if [[ ${vlan[_i]-__NULL__} = "__NULL__" ]]; then
+			continue;
+		fi
+		np_eths=$(( ++np_eths ))
+
+		if [[ -z ${macaddr[_i]} ]]; then
+			macaddr[_i]=$($macgen)
+			_any_change="1"
+		fi
+	done
+
+	if [[ $_any_change -eq "0" ]]; then
+		# there is no change in ethernet cards, so exit happy
+		return 0
+	fi
+	# Modify Config File
+	_tmp_conf="/tmp/__pvmctl_$RANDOM"
+	$sed -i -e "/macaddr\[.*\]=\".*\"/d" "${confdir}/${1}.pvm" 
+	# Number of MAC Addresses
+	no_macs=${#macaddr[@]}
+	# Number of Processed MAC Addresses
+	np_macs="0"
+	for ((_i=0; $np_macs < $no_macs; ++_i)); do
+		if [[ ${macaddr[_i]-__NULL__} = "__NULL__" ]]; then
+			continue
+		fi
+		np_macs=$(( ++np_macs ))
+
+		if [[ ! -z ${macaddr[_i]} ]]; then
+			echo "macaddr[$_i]=\"${macaddr[_i]}\"" >>  "${confdir}/${1}.pvm" 
+		fi
+	done
+	return 0
+}
+
 do_clone()
 {
 	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
@@ -1047,9 +1022,7 @@ do_clone()
 	echo "Generating config file ..."
 	$sed -e "s/^id=\".*\"/id=\"${3}\"/" \
 		-e "s/${1}/${2}/g" \
-		-e "s/^macaddr1=\".*\"/macaddr1=\"`$macgen`\"/" \
-		-e "s/^macaddr2=\".*\"/macaddr2=\"`$macgen`\"/" \
-				$confdir/${1}.pvm > $confdir/${2}.pvm
+		-e "/macaddr\[.*\]=\".*\"/d" $confdir/${1}.pvm > $confdir/${2}.pvm
 
 	echo "Creating disks, please wait ..."
 	mkdir "$vmdir/${2}"
@@ -1058,6 +1031,7 @@ do_clone()
 		cp -v $vmdir/${1}/$i $vmdir/${2}/$ic
 	done
 
+	verify_eths "${2}"
 	echo "clone(${2}) created ... "
 }
 
@@ -1085,11 +1059,7 @@ do_edit()
 			[yY]*)
 				if [ -r ${template} ]; then
 					if [ -w ${confdir} ]; then
-						macaddr1=`$macgen`
-						macaddr2=`$macgen`
-						$sed -e "s/^macaddr1=\".*\"/macaddr1=\"$macaddr1\"/" \
-							-e "s/^macaddr2=\".*\"/macaddr2=\"$macaddr2\"/" \
-								${template} > ${confdir}/${1}.pvm
+						$cp ${template} "${confdir}/${1}.pvm" > "/dev/null" 
 						${EDITOR} ${confdir}/${1}.pvm
 
 						load_configfile "${1}"
@@ -1111,9 +1081,102 @@ do_edit()
 				;;
 		esac
 	fi
+	verify_eths "${1}"
 }
 
-# Create A BaseImage Base Virtual Machine
+do_mkbase()
+{
+	if [[ -z "$1" ]]; then
+		echo "usage: mkbase host [base_name]"
+		exit 1
+	fi
+	check_host ${1}
+	check_run ${1}
+	load_configfile "${1}"
+	
+	_basename="$1"
+	if [[ ! -z "$2" ]]; then
+		_basename="$2"
+	fi
+
+	if [[ -f "$bidir/$_basename" ]]; then
+		echo "Error: there is a base image with \"$_basename\" name !!"
+		exit 1
+	fi
+
+	# Number of virtual disks
+	no_vdisk="${#disk[@]}"
+	# Number of processed virtual disks
+	np_vdisk="0"
+
+	# Find first disk(primary) in complex of disks and cdroms
+	for(( i=0; $np_vdisk < $no_vdisk; ++i)); do
+		if [[ ${disk[i]-__NULL__} = "__NULL__" ]]; then
+			continue;
+		fi
+		np_vdisk=$(( ++np_vdisk ))
+
+		if [[ ${media[i]} = "disk" &&  ! -z ${disk[i]} ]];  then
+			# Check if path is Absolute?
+			disk=${disk[i]}
+			if [[ $(expr ${disk} : '/') -eq 0 ]]; then
+				disk="${vmdir}/${1}/${disk}"
+			fi
+
+			echo "Use \"$disk\" disk as base ..."
+			# Check if the primary block device exists in the host.
+			if [ ! -e ${disk} ]; then
+				echo "Error:  Primary virtual drive (${disk}) doesn't exist or isn't readable."
+				exit 1
+			fi
+
+			$cp -v "${disk}" "$bidir/$_basename"
+			exit $?
+		fi
+	done
+	echo "Error:  Primary virtual drive doesn't exist."
+	exit 1
+}
+
+do_rmbase()
+{
+	if [[ -z "$1" ]]; then
+		echo "usage: rmbase base_name"
+		exit 1
+	fi
+
+	if [[ ! -f "$bidir/$1" ]]; then
+		echo "Error: There isn't any base with \"$1\" name !!"
+		exit 1
+	fi
+
+	echo "NOTE: after deleting this base, you can't boot all of"
+	echo "      your machines that are based on this image !!"
+	echo -n "Delete \"$1\", Are you sure (y/*)? "
+	read yesno
+
+	case $yesno in
+		[yY]*)
+			echo -n "Again ... , Are you sure (y/*)? "
+			read yesno
+			case $yesno in
+				[yY]*)
+					$rm -v "$bidir/$1"
+					exit $?
+					;;
+				*)
+					exit 0
+					;;
+			esac
+			;;
+		*)
+			exit 0
+			;;
+	esac
+
+}
+
+# Create A Virtual Machine from a template (base image)
 do_create()
 {
 	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
@@ -1133,9 +1196,9 @@ do_create()
 				-e "s/^id=\".*\"/id=\"${3}\"/" \
 							"${bidir}/${1}.pvm" > "/tmp/$2-beta"
 		else
-			$sed -e "s/^disktype0=\".*\"/disktype0=\"virtio\"/" \
-				-e "s/^media0=\".*\"/media0=\"disk\"/" \
-				-e "s/^disk0=\".*\"/disk0=\"${2}-OS.qcow2\"/" \
+			$sed -e "s/^disktype\[0\]=\".*\"/disktype\[0\]=\"virtio\"/" \
+				-e "s/^media\[0\]=\".*\"/media\[0\]=\"disk\"/" \
+				-e "s/^disk\[0\]=\".*\"/disk\[0\]=\"${2}-OS.qcow2\"/" \
 				-e "s/^id=\".*\"/id=\"${3}\"/" \
 								$template > "/tmp/$2-beta"
 		fi
@@ -1148,6 +1211,100 @@ do_create()
 	else 
 		echo "Error: Can't read base image"
 		exit 1
+	fi
+}
+
+#  ReBuild host configuration file
+#  usage: rebuild_conf host "list of parameters seprated with space"
+#+      example: rebuild_conf tvm id=\"2\"
+#  Note: in each rebuild, disk and eths array rebuiled from scrach.
+#+		thus, you should redefine disk and vlans(in parameter list) 
+#+           in each call.
+rebuild_conf()
+{
+	temp_conf="/tmp/rconf_$RANDOM"
+	clist=( $@ )
+	clist_no=${#clist[@]}
+
+	echo > $temp_conf
+	for ((i=1; i<$clist_no; ++i)); do
+		echo ${clist[i]} >> "$temp_conf"
+	done
+
+	# load configs
+	load_configfile ${clist[0]}
+
+	# unset arrays
+	unset disk
+	unset vlan
+	. $temp_conf
+
+	# set defaults
+	if [[ -z $sid ]]; then
+		sid=1
+	fi
+
+	# save new config
+	echo "#!/bin/bash" > "$confdir/${clist[0]}.pvm"
+	echo "id=\"$id\"" >> "$confdir/${clist[0]}.pvm"
+	echo "sid=\"$sid\"" >> "$confdir/${clist[0]}.pvm"
+	echo "mem=\"$mem\"" >> "$confdir/${clist[0]}.pvm"
+	echo "noacpi=\"$noacpi\"" >> "$confdir/${clist[0]}.pvm"
+	echo "cpus=\"$cpus\"" >> "$confdir/${clist[0]}.pvm"
+	echo "mouse=\"$mouse\"" >> "$confdir/${clist[0]}.pvm"
+	echo "nic=\"$nic\"" >> "$confdir/${clist[0]}.pvm"
+	echo "boot=\"$boot\"" >> "$confdir/${clist[0]}.pvm"
+	echo "host_usb1=\"$host_usb1\"" >> "$confdir/${clist[0]}.pvm"
+	
+	no_vdisk=${#disk[@]}
+	np_vdisk=0
+	for ((i=0; $np_vdisk < $no_vdisk; ++i)); do
+		# Jump from NULL elements
+		if [[ ${disk[i]-__NULL__} = "__NULL__" ]]; then
+			continue
+		fi
+		np_vdisk=$(( ++np_vdisk ))
+
+		echo "disktype[$i]=\"${disktype[i]}\"" >> "$confdir/${clist[0]}.pvm"
+		echo "media[$i]=\"${media[i]}\"" >> "$confdir/${clist[0]}.pvm"
+		echo "disk[$i]=\"${disk[i]}\"" >> "$confdir/${clist[0]}.pvm"
+	done
+
+	no_eths=${#vlan[@]}
+	np_eths=0
+	for ((i=0; $np_eths < $no_eths; ++i)); do
+		if [[ ${vlan[i]-__NULL__} = "__NULL__" ]]; then
+			continue;
+		fi
+		np_eths=$(( ++np_eths ))
+
+		echo "vlan[$i]=\"${vlan[i]}\"" >> "$confdir/${clist[0]}.pvm"
+		echo "macaddr[$i]=\"${macaddr[i]}\"" >> "$confdir/${clist[0]}.pvm"
+	done
+
+	verify_eths "${clist[0]}"
+	$rm -f "$temp_conf"
+}
+
+do_chconf()
+{
+	if [[ -z $1 || -z $2 ]]; then
+		echo "usage: chconf host parameters-list"
+		exit 1
+	fi
+
+	ch_args=( $@ )
+	# remove command (chconf)
+	unset ch_args[0]
+
+	rb_args=( ${ch_args[@]} )
+	rebuild_conf ${rb_args[@]}
+
+	# test existance of "VM" directory
+	# if doesn't, create him.
+	load_configfile "${clist[0]}"
+	if [[ ! -d "$vmdir/${clist[0]}" ]]; then
+		$mkdir "$vmdir/${clist[0]}"
 	fi
 }
 
@@ -1224,8 +1381,20 @@ case "${1}" in
 	"lst")
 		do_lst
 		;;
+	"mkbase")
+		do_mkbase "$2" "$3"
+		;;
+	"rmbase")
+		do_rmbase "$2" 
+		;;
 	"lscd")
 		do_lscd
+		;;
+	"mkiso")
+		do_mkiso "${2}"
+		;;
+	"rmiso")
+		do_rmiso "${2}"
 		;;
 	"rmvm")
 		do_rmvm ${2}
@@ -1244,6 +1413,9 @@ case "${1}" in
 		;;
 	"edit")
 		do_edit "${2}"
+		;;
+	"chconf")
+		do_chconf $@
 		;;
 	"help")
 		do_usage
