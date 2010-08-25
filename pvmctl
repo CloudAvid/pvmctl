@@ -16,17 +16,6 @@
 # DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# History
-# 1388-11-24 by hamid jafarian
-#	* do_rename function
-# 1388-11-25 by hamid jafarian
-#	* do_clone function
-#	* for disks in config file: add Ability to use Relative Pathes to $vmdir(for disks),$isodir(for cdrom) 
-#					beside the ability to define Full Pathes
-# 1388-12-9: by hamid jafarian
-#	* Add "sid" parameter support
-#	* Add "host_usb1" parameter support
-
 . /etc/pvm.conf
 
 # The file to use as a template when creating new VM configs
@@ -264,8 +253,7 @@ do_start()
 	fi
 
 	# Set Monitoring to telnet
-	confmonitor="telnet::$(( $mbport + $id )),server,nowait,nodelay";
-
+	confmonitor="unix:$mondir/${host},server,nowait,nodelay";
 	# Check which device to boot from
 	if [ ! -z ${boot} ]; then
 		case "${boot}" in
@@ -633,11 +621,9 @@ do_shutdown()
 		exit 1;
 	fi
 	check_host ${1}
-	load_configfile "${1}"
+	HOST=$1
 
-	mport=$(( $mbport + $id ))
-
-	echo "system_powerdown" | $nc localhost $mport > /dev/null
+	echo "system_powerdown" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null
 	echo "Shutdown signal sent to ${1} ... "
 }
 
@@ -648,11 +634,9 @@ do_reset()
 		exit 1;
 	fi
 	check_host ${1}
-	load_configfile "${1}"
+	HOST=$1
 
-	mport=$(( $mbport + $id ))
-
-	echo "system_reset" | $nc localhost $mport > /dev/null
+	echo "system_reset" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null
 	echo "reset signal sent to ${1} ... "
 }
 
@@ -701,10 +685,10 @@ do_snaps()
 	fi
 	check_host ${1}
 	load_configfile "${1}"
+	HOST=$1
 
 	echo "${1} snapshots:"
-	mport=$(( $mbport + $id ))
-	echo "info snapshots" | $nc localhost $mport | $sed -e "1,2d" -e "\$d" 
+	echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST | $sed -e "1,2d" -e "\$d" 
 }
 
 do_mksnap()
@@ -714,13 +698,11 @@ do_mksnap()
 		exit 1;
 	fi
 	check_host ${1}
-	load_configfile "${1}"
+	HOST=$1
 
 	echo "Make an snapshot for ${1}"
 	echo "Please wait ..."
-	mport=$(( $mbport + $id ))
-	echo "savevm ${2}" | $nc localhost $mport > /dev/null 
-
+	echo "savevm ${2}" |  $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
 	echo "The Snapshot is created"
 }
 
@@ -732,11 +714,11 @@ do_ldsnap()
 	fi
 	check_host ${1}
 	load_configfile "${1}"
+	HOST=$1
 
 	echo "Load snapshot for ${1} with tag|id=${2}"
 	echo "Please wait ..."
-	mport=$(( $mbport + $id ))
-	echo "loadvm ${2}" | $nc localhost $mport > /dev/null 
+	echo "loadvm ${2}" | $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
 }
 
 do_rmsnap()
@@ -746,12 +728,11 @@ do_rmsnap()
 		exit 1;
 	fi
 	check_host ${1}
-	load_configfile "${1}"
+	HOST=$1
 
 	echo "delete snapshot from ${1} with tag|id=${2}"
 	echo "please wait ..."
-	mport=$(( $mbport + $id ))
-	echo "delvm ${2}" | $nc localhost $mport > /dev/null 
+	echo "delvm ${2}" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null 
 }
 
 do_mon()
@@ -760,11 +741,10 @@ do_mon()
 		echo "usage: mon host";
 		exit 1;
 	fi
-	check_host ${1}
-	load_configfile "${1}"
+	check_host ${1}	
+	HOST=$1
 
-	mport=$(( $mbport + $id ))
-	telnet localhost $mport
+	$socat - UNIX-CONNECT:$mondir/$HOST  
 }
 
 do_ls()
