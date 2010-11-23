@@ -1110,7 +1110,8 @@ do_mkbase()
 				exit 1
 			fi
 
-			$cp -v "${disk}" "$bidir/$_basename"
+			echo "Please wait ..."
+			"$kvmimg" convert -O qcow2 "${disk}" "$bidir/$_basename"
 			exit $?
 		fi
 	done
