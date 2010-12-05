@@ -669,9 +669,26 @@ do_snaps()
 	check_host ${1}
 	load_configfile "${1}"
 	HOST=$1
-
+	__snaps=$(echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST)
+	if [[ -z "$__snaps" ]]; then
+		echo "Error: Host may be OFF or BUSY !!"
+		exit 1
+	fi
 	echo "${1} snapshots:"
 	echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST | $sed -e "1,2d" -e "\$d" 
+}
+
+_wait_for_snaps_activities()
+{
+	for((;;)); do
+		echo -n "."
+		$pvmctl "snaps" "$1" >/dev/null 2>&1
+		if [[ $? -eq 0 ]]; then
+			echo 
+			return 0
+		fi
+		$sleep 30
+	done    
 }
 
 do_mksnap()
@@ -684,8 +701,9 @@ do_mksnap()
 	HOST=$1
 
 	echo "Make an snapshot for ${1}"
-	echo "Please wait ..."
+	echo -n "Please wait ..."
 	echo "savevm ${2}" |  $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
+	_wait_for_snaps_activities "$1"
 	echo "The Snapshot is created"
 }
 
@@ -700,8 +718,9 @@ do_ldsnap()
 	HOST=$1
 
 	echo "Load snapshot for ${1} with tag|id=${2}"
-	echo "Please wait ..."
+	echo -n "Please wait ..."
 	echo "loadvm ${2}" | $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
+	_wait_for_snaps_activities "$1"
 }
 
 do_rmsnap()
@@ -714,8 +733,9 @@ do_rmsnap()
 	HOST=$1
 
 	echo "delete snapshot from ${1} with tag|id=${2}"
-	echo "please wait ..."
+	echo -n "please wait ..."
 	echo "delvm ${2}" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null 
+	_wait_for_snaps_activities "$1"
 }
 
 do_mon()
