@@ -514,6 +514,7 @@ do_usage()
 	        ${scriptname} rename   host   new_name             - rename host to new_name
 	        ${scriptname} clone    host   clone_name clone_id  - creating a clone from the host
 	
+	        ${scriptname} new      host_name [host_id]         - Create A virtual machine
 	        ${scriptname} create   template host_name host_id  - Create A virtual machine from template
 
 	        ${scriptname} mkbase   host  [base-name]           - Create A virtual Template(base image) from host
@@ -997,8 +998,47 @@ do_clone()
 	echo "clone(${2}) created ... "
 }
 
+# Create new virtual machine.
+# usage: new name-of-new-vm [id]
+do_new()
+{
+	if [[ -z $1 ]]; then
+		echo "usage: new host_name [host_id]"
+		exit 1
+	fi
+	if [[ -e ${confdir}/${1}.pvm ]]; then
+		echo "Error: Your host exists right now ..."
+		exit 0;
+	fi
+
+	if [ -r ${template} ]; then
+		if [ -w ${confdir} ]; then
+			if [[ -z $2 ]]; then
+				$cp ${template} "${confdir}/${1}.pvm" > "/dev/null"
+			else
+				$sed -e "s/^id=\".*\"/id=\"$2\"/" ${template} > "${confdir}/${1}.pvm" 
+			fi
+			
+			load_configfile "${1}"
+			$mkdir $vmdir/${1}
+			echo "New virtual machine ($1) has been created ..."
+		else
+			echo "Error: You don't have write permission for ${confdir}"
+			exit 1
+		fi
+	else
+		echo "Error: The template config file (${template}) doesn't exist or isn't readable."
+		exit 1
+	fi
+}
+
 do_edit()
 {
+	if [[ -z $1 ]]; then
+		echo "usage: edit host_name"
+		exit 1
+	fi
+
 	# If the config file exists, and is writable by the user, then load it using $EDITOR
 	if [ -e ${confdir}/${1}.pvm ]; then
 		if [ -w ${confdir}/${1}.pvm ]; then
@@ -1019,27 +1059,11 @@ do_edit()
 		read yesno
 		case "${yesno}" in
 			[yY]*)
-				if [ -r ${template} ]; then
-					if [ -w ${confdir} ]; then
-						$cp ${template} "${confdir}/${1}.pvm" > "/dev/null" 
-						${EDITOR} ${confdir}/${1}.pvm
-
-						load_configfile "${1}"
-						$mkdir $vmdir/${1}
-
-						echo "put your virtual machine images in $vmdir/${1}"
-					else
-						echo "Error: You don't have write permission for ${confdir}"
-						exit 1
-					fi
-				else
-					echo "Error: The template config file (${template}) doesn't exist or isn't readable."
-					exit 1
-				fi
+				do_new "$1"
+				${EDITOR} ${confdir}/${1}.pvm
 				;;
 			*)
 				echo "As you wish."
-				exit 1
 				;;
 		esac
 	fi
@@ -1143,7 +1167,7 @@ do_rmbase()
 do_create()
 {
 	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
-		echo "usage: create vm_template host_name host_ID"
+		echo "usage: create template host_name host_id"
 		exit 1
 	fi
 
@@ -1162,12 +1186,11 @@ do_create()
 			$sed -e "s/^disktype\[0\]=\".*\"/disktype\[0\]=\"virtio\"/" \
 				-e "s/^media\[0\]=\".*\"/media\[0\]=\"disk\"/" \
 				-e "s/^disk\[0\]=\".*\"/disk\[0\]=\"${2}-OS.qcow2\"/" \
-				-e "s/^id=\".*\"/id=\"${3}\"/" \
 								$template > "/tmp/$2-beta"
 		fi
 		template="/tmp/${2}-beta"
 
-		do_edit "${2}"
+		do_new "$2" "$3"
 		$rm "/tmp/${2}-beta"
 
 		${kvmimg} create -b  "${bidir}/${1}" -f  qcow2   "${vmdir}/${2}/${2}-OS.qcow2"
@@ -1306,6 +1329,9 @@ case "${1}" in
 		;;
 	"create")
 		do_create "${2}" "${3}" "${4}"
+		;;
+	"new")
+		do_new "$2" "$3"
 		;;
 	"shutdown")
 		do_shutdown "${2}"
