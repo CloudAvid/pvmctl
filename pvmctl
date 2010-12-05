@@ -1234,6 +1234,8 @@ rebuild_conf()
 	echo "#!/bin/bash" > "$confdir/${clist[0]}.pvm"
 	echo "id=\"$id\"" >> "$confdir/${clist[0]}.pvm"
 	echo "sid=\"$sid\"" >> "$confdir/${clist[0]}.pvm"
+	echo "ip=\"$ip\"" >> "$confdir/${clist[0]}.pvm"
+	echo "des=\"$des\"" >> "$confdir/${clist[0]}.pvm"
 	echo "mem=\"$mem\"" >> "$confdir/${clist[0]}.pvm"
 	echo "noacpi=\"$noacpi\"" >> "$confdir/${clist[0]}.pvm"
 	echo "cpus=\"$cpus\"" >> "$confdir/${clist[0]}.pvm"

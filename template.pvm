@@ -11,6 +11,12 @@ id="##"
 # Storage repository placed at $basedir/etc/VMStorages
 sid="1"
 
+# VM IP-Address
+ip=""
+
+# Description about VM
+des=""
+
 # How much RAM to associate with the VM.
 # This is the max amount of RAM that it will use.
 mem="1024"
