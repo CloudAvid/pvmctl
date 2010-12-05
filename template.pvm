@@ -64,24 +64,24 @@ host_usb1=""
 # Default for disk:     /dev/mapper/vol0-${host}
 
 # The first virtual block device
-disktype[0]=""
-media[0]=""
-disk[0]=""
+#disktype[0]=""
+#media[0]=""
+#disk[0]=""
 
 # The second virtual block device
-disktype[1]=""
-media[1]=""
-disk[1]=""
+#disktype[1]=""
+#media[1]=""
+#disk[1]=""
 
 # The third virtual block device
-disktype[2]=""
-media[2]=""
-disk[2]=""
+#disktype[2]=""
+#media[2]=""
+#disk[2]=""
 
 # The fourth virtual block device
-disktype[3]=""
-media[3]=""
-disk[3]=""
+#disktype[3]=""
+#media[3]=""
+#disk[3]=""
 
 # you can define more disk as you wish ...
 # ...
@@ -91,7 +91,7 @@ disk[3]=""
 #+ "":				the default ethernet script will be used for this interface
 #+ "VLAN-ID": 			ethernet script for this vlan will be used for this interface
 #+ "/full/path/to/script"	defines the full path to the custom script
-vlan[0]="9"
+#vlan[0]="9"
 #vlan[1]=""
 
 # Network MacAddress, 
