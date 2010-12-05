@@ -416,8 +416,6 @@ do_start()
 
 do_stop()
 {
-	# Check if a virtual host was given on the commandline
-	# Will exit if none was given
 	check_host "${1}"
 
 	${0} status ${1} > /dev/null
@@ -428,39 +426,23 @@ do_stop()
 	echo "Attempting to stop VM for ${1} ..."
 	if [ -r ${piddir}/${1}.pid ]; then
 		${kill} -TERM $( ${cat} ${piddir}/${1}.pid )
-
 		${sleep} ${sleeptime}
 
 		if [ -d /proc/$( ${cat} ${piddir}/${1}.pid ) ]; then
 			echo "Warning: Something is wrong ... couldn't stop the VM."
-			#do_forcekill "${1}"
-			# hm.t. changed for cluster environment
-			${pkill} -f -- "-name ${1}"
+			echo "         Try to kill him."
+			${pkill} -KILL -f -- "-name ${1}"
+			${sleep} ${sleeptime}
 		fi
 
-		${rm} ${piddir}/${1}.pid
+		${rm} ${piddir}/${1}.pid >/dev/null 2>&1
 	else
-		echo "Warning: PID file missing or not readable."
-		#do_forcekill "${1}"
-		${pkill} -f -- "-name ${1}"
+		echo "Warning: PID file missing or not readable. Try to kill him."
+		${pkill} -KILL -f -- "-name ${1}"
+		${sleep} ${sleeptime}
 	fi
 
 	echo "VM for ${1} has stopped."
-}
-
-do_forcekill()
-{
-	echo -n "Do you want to forcibly kill the KVM process for ${1}? (y/n) "
-	read yesno
-	case "${yesno}" in
-		[yY]*)
-			${pkill} -f -- "-name ${1}"
-			;;
-		*)
-			echo "Not stopping the VM for ${1}."
-			exit 0
-			;;
-	esac
 }
 
 do_status()
