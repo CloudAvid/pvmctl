@@ -669,9 +669,18 @@ do_snaps()
 	check_host ${1}
 	load_configfile "${1}"
 	HOST=$1
+	if [[ ! -e "$mondir/$HOST" ]]; then
+		echo "There isn't any monitor socket .."
+		exit 0
+	fi
+	$pvmctl "status" $HOST >/dev/null 2>&1
+	if [[ $? -ne 0 ]]; then
+		echo "Host is OFF, for snapshot activities must be ON."
+		exit 0
+	fi
 	__snaps=$(echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST)
 	if [[ -z "$__snaps" ]]; then
-		echo "Error: Host may be OFF or BUSY !!"
+		echo "Error: Host isBUSY !!!"
 		exit 1
 	fi
 	echo "${1} snapshots:"
