@@ -495,8 +495,6 @@ do_usage()
 	        ${scriptname} whichvnc host    - show which VNC display port is assigned to the named VM
 	        ${scriptname} killvnc  host    - kills any running vncviewer processes attached to the named VM
 
-	        ${scriptname} edit     host    - open config file for host using \$EDITOR, or create a new config file based on a template
-
 	        ${scriptname} status           - show the names of all running VMs
 	        ${scriptname} status   kvm     - show full details for all running kvm processes
 	        ${scriptname} status   host    - show full details for the named kvm process
@@ -506,6 +504,10 @@ do_usage()
 	        ${scriptname} ldsnap   host   tag|id               - load snapshot with tag|id
 	        ${scriptname} rmsnap   host   tag|id               - remove snapshot with tag|id
 
+	        ${scriptname} new      host_name                   - Create A virtual machine
+	        ${scriptname} create   template host_name          - Create A virtual machine from template
+	        ${scriptname} edit     host                        - open config file for edit
+
 	        ${scriptname} mkimg    host image_name image_size  - create a disk image in the host directory
 	        ${scriptname} mkbimg   host base_image image_name  - create a disk image base on "base_image" in the host directory
 
@@ -514,9 +516,6 @@ do_usage()
 	        ${scriptname} rename   host   new_name             - rename host to new_name
 	        ${scriptname} clone    host   clone_name clone_id  - creating a clone from the host
 	
-	        ${scriptname} new      host_name [host_id]         - Create A virtual machine
-	        ${scriptname} create   template host_name host_id  - Create A virtual machine from template
-
 	        ${scriptname} mkbase   host  [base-name]           - Create A virtual Template(base image) from host
 	        ${scriptname} rmbase   base_name                   - Remove the Virtual Templae (base image) 
 	        ${scriptname} mkiso    iso_name                    - Create An ISO image from the CD in Local CDROM(local)
@@ -766,6 +765,18 @@ do_ls()
 	for I in `ls ${confdir}`; do
 		echo "${I%.pvm}"
 	done
+}
+
+# returns the biggest ID in virtual machines
+do_genid()
+{	
+	for I in `ls ${confdir}`; do
+		_id=$($sed -n -e "/^id=\".*\"/p" "${confdir}/${I}" | cut -d "=" -f 2)
+		_id=${_id%\"}
+		_id=${_id#\"}
+		_out="$_out$_id\n"
+	done
+	echo $(( $(echo -e "$_out" | sort -nr | $sed -n -e "1p") + 1 ))
 }
 
 do_ls_ids()
@@ -1028,26 +1039,20 @@ do_clone()
 }
 
 # Create new virtual machine.
-# usage: new name-of-new-vm [id]
+# usage: new name-of-new-vm
 do_new()
 {
 	if [[ -z $1 ]]; then
-		echo "usage: new host_name [host_id]"
+		echo "usage: new host_name"
 		exit 1
 	fi
 	if [[ -e ${confdir}/${1}.pvm ]]; then
 		echo "Error: Your host exists right now ..."
 		exit 0;
 	fi
-
 	if [ -r ${template} ]; then
 		if [ -w ${confdir} ]; then
-			if [[ -z $2 ]]; then
-				$cp ${template} "${confdir}/${1}.pvm" > "/dev/null"
-			else
-				$sed -e "s/^id=\".*\"/id=\"$2\"/" ${template} > "${confdir}/${1}.pvm" 
-			fi
-			
+			$sed -e "s/^id=\".*\"/id=\"$( do_genid )\"/" ${template} > "${confdir}/${1}.pvm" 	
 			load_configfile "${1}"
 			$mkdir $vmdir/${1}
 			echo "New virtual machine ($1) has been created ..."
@@ -1084,17 +1089,8 @@ do_edit()
 			exit 1
 		fi
 	else
-		echo -n "${confdir}/${1}.pvm does not exist.  Would you like to create one from the template? (y/n) "
-		read yesno
-		case "${yesno}" in
-			[yY]*)
-				do_new "$1"
-				${EDITOR} ${confdir}/${1}.pvm
-				;;
-			*)
-				echo "As you wish."
-				;;
-		esac
+		echo "Error: VM you want to edit dosen't exist !!!"
+		exit 1
 	fi
 	verify_eths "${1}"
 }
@@ -1195,34 +1191,28 @@ do_rmbase()
 # Create A Virtual Machine from a template (base image)
 do_create()
 {
-	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
-		echo "usage: create template host_name host_id"
+	if [[ -z ${1} || -z ${2} ]]; then
+		echo "usage: create template host_name"
 		exit 1
 	fi
-
 	if [[ -f "${confdir}/${2}.pvm" ]]; then 
 		echo "Error: Your host exists right now ..."
 		exit 1
 	fi
-
 	if [ -r ${bidir}/${1} ]; then
 		# Check if is there any template configuration file
 		if [[ -f "${bidir}/${1}.pvm" ]]; then
-			$sed -e "s/${1}/${2}/g" \
-				-e "s/^id=\".*\"/id=\"${3}\"/" \
-							"${bidir}/${1}.pvm" > "/tmp/$2-beta"
-		else
-			$sed -e "s/^disktype\[0\]=\".*\"/disktype\[0\]=\"virtio\"/" \
-				-e "s/^media\[0\]=\".*\"/media\[0\]=\"disk\"/" \
-				-e "s/^disk\[0\]=\".*\"/disk\[0\]=\"${2}-OS.qcow2\"/" \
-								$template > "/tmp/$2-beta"
+			$sed -e "s/${1}/${2}/g" "${bidir}/${1}.pvm" > "/tmp/$2-beta"
+			template="/tmp/${2}-beta"
 		fi
-		template="/tmp/${2}-beta"
-
-		do_new "$2" "$3"
-		$rm "/tmp/${2}-beta"
-
-		${kvmimg} create -b  "${bidir}/${1}" -f  qcow2   "${vmdir}/${2}/${2}-OS.qcow2"
+		do_new "$2" 
+		if [[ -f "${bidir}/${1}.pvm" ]]; then 
+			$rm "/tmp/${2}-beta"
+			$( rebuild_conf "$2" disk[0]="$2-OS.qcow2" )
+		else
+			$( rebuild_conf "$2" disktype[0]="virtio" media[0]="disk" disk[0]="$2-OS.qcow2" )
+		fi
+		${kvmimg} create -b  "${bidir}/${1}" -f  qcow2   "${vmdir}/${2}/${2}-OS.qcow2" > /dev/null 
 	else 
 		echo "Error: Can't read base image"
 		exit 1
@@ -1359,10 +1349,10 @@ case "${1}" in
 		do_killvnc "${2}"
 		;;
 	"create")
-		do_create "${2}" "${3}" "${4}"
+		do_create "${2}" "${3}" 
 		;;
 	"new")
-		do_new "$2" "$3"
+		do_new "$2" 
 		;;
 	"shutdown")
 		do_shutdown "${2}"
@@ -1387,6 +1377,9 @@ case "${1}" in
 		;;
 	"rmsnap")
 		do_rmsnap "${2}" "${3}"
+		;;
+	"genid")
+		do_genid
 		;;
 	"ls")
 		do_ls_ids
