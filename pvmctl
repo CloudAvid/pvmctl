@@ -504,8 +504,8 @@ do_usage()
 	        ${scriptname} ldsnap   host   tag|id               - load snapshot with tag|id
 	        ${scriptname} rmsnap   host   tag|id               - remove snapshot with tag|id
 
-	        ${scriptname} new      host_name                   - Create A virtual machine
-	        ${scriptname} create   template host_name          - Create A virtual machine from template
+	        ${scriptname} new      host_name [sid]             - Create A virtual machine
+	        ${scriptname} create   template host_name [sid]    - Create A virtual machine from template
 	        ${scriptname} edit     host                        - open config file for edit
 
 	        ${scriptname} mkimg    host image_name image_size  - create a disk image in the host directory
@@ -514,7 +514,7 @@ do_usage()
 	        ${scriptname} info     host                        - print out host information (parameters in config file)
 	        ${scriptname} rmvm     host                        - delete files(config/images) of virtual machine
 	        ${scriptname} rename   host   new_name             - rename host to new_name
-	        ${scriptname} clone    host   clone_name clone_id  - creating a clone from the host
+	        ${scriptname} clone    host   clone_name           - creating a clone from the host
 	
 	        ${scriptname} mkbase   host  [base-name]           - Create A virtual Template(base image) from host
 	        ${scriptname} rmbase   base_name                   - Remove the Virtual Templae (base image) 
@@ -524,6 +524,7 @@ do_usage()
 	        ${scriptname} ls                                   - print out list of virtual machines
 	        ${scriptname} lst                                  - print out list of Virtual Templates 
 	        ${scriptname} lscd                                 - print out list of CD Images (ISO files)
+	        ${scriptname} lsid                                 - print out list of Virtual Storages.
 
 	        ${scriptname} help                                 - show this usage
 
@@ -767,18 +768,6 @@ do_ls()
 	done
 }
 
-# returns the biggest ID in virtual machines
-do_genid()
-{	
-	for I in `ls ${confdir}`; do
-		_id=$($sed -n -e "/^id=\".*\"/p" "${confdir}/${I}" | cut -d "=" -f 2)
-		_id=${_id%\"}
-		_id=${_id#\"}
-		_out="$_out$_id\n"
-	done
-	echo $(( $(echo -e "$_out" | sort -nr | $sed -n -e "1p") + 1 ))
-}
-
 do_ls_ids()
 {
 	printf "%-20s%s\n" "host" "id"
@@ -817,6 +806,31 @@ do_lscd()
 		echo "$I"
 	done
 }
+
+do_lsid()
+{
+	echo "Default storage: $vmdir"
+	printf "%-20s%s\n" "ID" "Staorage Path"
+	printf "%-20s%s\n" "--" "-------------"
+	for __i in $( read_config_file "$cf_VMStorages" ); do
+		__id=`echo $__i | cut -s -d ";" -f 1`;
+		__path=`echo $__i | cut -s -d ";" -f 2`;
+		printf "%-20s%s\n" $__id $__path
+	done
+}
+
+# returns the biggest ID in virtual machines
+do_genid()
+{	
+	for I in `ls ${confdir}`; do
+		_id=$($sed -n -e "/^id=\".*\"/p" "${confdir}/${I}" | cut -d "=" -f 2)
+		_id=${_id%\"}
+		_id=${_id#\"}
+		_out="$_out$_id\n"
+	done
+	echo $(( $(echo -e "$_out" | sort -nr | $sed -n -e "1p") + 1 ))
+}
+
 
 do_mkiso()
 {
@@ -1014,8 +1028,8 @@ verify_eths()
 
 do_clone()
 {
-	if [[ -z ${1} || -z ${2} || -z ${3} ]]; then
-		echo "usage: clone host clone-name clone-id";
+	if [[ -z ${1} || -z ${2} ]]; then
+		echo "usage: clone host clone_name";
 		exit 1;
 	fi	
 	check_host ${1}
@@ -1023,7 +1037,7 @@ do_clone()
 	load_configfile "${1}"
 
 	echo "Generating config file ..."
-	$sed -e "s/^id=\".*\"/id=\"${3}\"/" \
+	$sed -e "s/^id=\".*\"/id=\"$( do_genid )\"/" \
 		-e "s/${1}/${2}/g" \
 		-e "/macaddr\[.*\]=\".*\"/d" $confdir/${1}.pvm > $confdir/${2}.pvm
 
@@ -1043,7 +1057,7 @@ do_clone()
 do_new()
 {
 	if [[ -z $1 ]]; then
-		echo "usage: new host_name"
+		echo "usage: new host_name [sid]"
 		exit 1
 	fi
 	if [[ -e ${confdir}/${1}.pvm ]]; then
@@ -1052,7 +1066,10 @@ do_new()
 	fi
 	if [ -r ${template} ]; then
 		if [ -w ${confdir} ]; then
-			$sed -e "s/^id=\".*\"/id=\"$( do_genid )\"/" ${template} > "${confdir}/${1}.pvm" 	
+			$sed -e "s/^id=\".*\"/id=\"$( do_genid )\"/"  ${template} > "${confdir}/${1}.pvm"
+			if [[ ! -z "$2" ]]; then
+				$sed -i -e "s/^sid=\".*\"/sid=\"$2\"/" "${confdir}/${1}.pvm" 	
+			fi
 			load_configfile "${1}"
 			$mkdir $vmdir/${1}
 			echo "New virtual machine ($1) has been created ..."
@@ -1192,7 +1209,7 @@ do_rmbase()
 do_create()
 {
 	if [[ -z ${1} || -z ${2} ]]; then
-		echo "usage: create template host_name"
+		echo "usage: create template host_name [sid]"
 		exit 1
 	fi
 	if [[ -f "${confdir}/${2}.pvm" ]]; then 
@@ -1205,7 +1222,7 @@ do_create()
 			$sed -e "s/${1}/${2}/g" "${bidir}/${1}.pvm" > "/tmp/$2-beta"
 			template="/tmp/${2}-beta"
 		fi
-		do_new "$2" 
+		do_new "$2" "$3"
 		if [[ -f "${bidir}/${1}.pvm" ]]; then 
 			$rm "/tmp/${2}-beta"
 			$( rebuild_conf "$2" disk[0]="$2-OS.qcow2" )
@@ -1349,10 +1366,10 @@ case "${1}" in
 		do_killvnc "${2}"
 		;;
 	"create")
-		do_create "${2}" "${3}" 
+		do_create "${2}" "${3}" "$4"
 		;;
 	"new")
-		do_new "$2" 
+		do_new "$2" "$3"
 		;;
 	"shutdown")
 		do_shutdown "${2}"
@@ -1383,25 +1400,21 @@ case "${1}" in
 		;;
 	"ls")
 		do_ls_ids
-		#if [[ -z ${2} ]]; then
-		#	do_ls
-		#else
-		#	if [[ ${2} = "with-ids" ]]; then
-		#		do_ls_ids
-		#	fi
-		#fi 
 		;;
 	"lst")
 		do_lst
+		;;
+	"lscd")
+		do_lscd
+		;;
+	"lsid")
+		do_lsid
 		;;
 	"mkbase")
 		do_mkbase "$2" "$3"
 		;;
 	"rmbase")
 		do_rmbase "$2" 
-		;;
-	"lscd")
-		do_lscd
 		;;
 	"mkiso")
 		do_mkiso "${2}"
@@ -1416,7 +1429,7 @@ case "${1}" in
 		do_rename ${2} ${3}
 		;;
 	"clone")
-		do_clone ${2} ${3} ${4}
+		do_clone ${2} ${3}
 		;;
 	"info")
 		do_info ${2}
