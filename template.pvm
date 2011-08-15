@@ -57,7 +57,7 @@ host_usb1=""
 # Values  for disktype: ide, scsi, virtio
 # Default for disktype: ide
 
-# If the value for disktyp0 is scsi or virtio, an extra ',boot=on' option will
+# If the value for disktype[0] is scsi or virtio, an extra ',boot=on' option will
 # be added to the pvm commandline.  This is needed in order to boot from SCSI
 # and paravirtualised block devices.
 
@@ -67,27 +67,34 @@ host_usb1=""
 # Values  for disk:     a path to either a disk image file, or an LVM logical volume
 # 	Path can be: Full path (start with "/") or Relative
 #			to Images Storage path ($sid)
-# Default for disk:     /dev/mapper/vol0-${host}
+
+# Values for rebase: 	rebase number will be: 0, 1, 2 , ...
+# 			rebase meaningfull for "disk"s.
+# 			it shows the last rebasing activity.. "pvmctl rebase ..."
 
 # The first virtual block device
 #disktype[0]=""
 #media[0]=""
 #disk[0]=""
+#rebase[0]="0"
 
 # The second virtual block device
 #disktype[1]=""
 #media[1]=""
 #disk[1]=""
+#rebase[1]="0"
 
 # The third virtual block device
 #disktype[2]=""
 #media[2]=""
 #disk[2]=""
+#rebase[2]="0"
 
 # The fourth virtual block device
 #disktype[3]=""
 #media[3]=""
 #disk[3]=""
+#rebase[3]=""
 
 # you can define more disk as you wish ...
 # ...
@@ -98,8 +105,16 @@ host_usb1=""
 #+ "VLAN-ID": 			ethernet script for this vlan will be used for this interface
 #+ "/full/path/to/script"	defines the full path to the custom script
 #vlan[0]="9"
-#vlan[1]=""
-
+#
 # Network MacAddress, 
 # Thair Values will be created by pvmctl at creation(edit, clone) time.
-# macaddr[0]
+#macaddr[0]=""
+#
+# Type of network device.
+# Values may be: virtio, rtl8139, e1000
+#vlantype[0]=""
+
+#vlan[1]=""
+#macaddr[1]=""
+#vlantype[1]=""
+

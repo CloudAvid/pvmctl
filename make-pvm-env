@@ -1,0 +1,75 @@
+#!/bin/bash
+
+echo -n "i want delete pvm user if exists, delete him?(y/*) " 
+read yes;
+if [[ $yes = "y" ]]; then
+	userdel -r pvm 2>/dev/null
+fi
+
+echo "install pvm packages ..."
+tar xjf pvmctl-git.tar.bz2
+
+. ./pvmctl-git/root-etc/pvm.conf 
+
+mkdir -p "$basedir/{etc,root-etc,Scripts,var,VMStorage}"
+mkdir -p "$basedir/etc/pvm"
+mkdir -p "$basedir/var/{run,mon,log}"
+mkdir -p "$basedir/VMStorage/{BIs,FLPs,ISOs,VMs}"
+mkdir -p "$logdir"
+
+cp ./pvmctl-git/* $basedir/Scripts 2>/dev/null
+cp -r ./pvmctl-git/root-etc $basedir/
+
+ln -s $basedir/root-etc/pvm.conf /etc/pvm.conf 2>/dev/null
+
+echo "# Log file for backup process activities" > $basedir/etc/backup-log-file
+echo "bp.log" >> $basedir/etc/backup-log-file
+
+echo "# Log file for Remote Site Syncronization Process" > $basedir/etc/rsite-sync-log-file
+echo "rsync.log" >> $basedir/etc/rsite-sync-log-file
+
+echo "#  This files Contains the name of VMs, should be excluded from" > $basedir/etc/snap-exclude
+echo "#+ Making Snapshots(pvm rotationl snapshot) process." >> $basedir/etc/snap-exclude
+echo "#  Names Seprate in lines." >> $basedir/etc/snap-exclude
+
+echo "# defines Ethernet Interface that is connected to the trunk connection" > $basedir/etc/trunk-eth
+
+echo "#Vlan Numbers" > $basedir/etc/vlans
+
+echo "# Place Of Log file ... for VM Services" > $basedir/etc/vm-services-log-file
+echo "vms.log" >> $basedir/etc/vm-services-log-file
+
+echo "# Path to virtaul machine images" > $basedir/etc/VMStorages
+echo "# Format: id;type;path" >> $basedir/etc/VMStorages
+echo "#         id: could be a number, 1, 2 ..." >> $basedir/etc/VMStorages
+echo "#         type: could be fs: for a generic file system storage, or vg: for a volume group" >> $basedir/etc/VMStorages
+echo "#         path: could be full path to the storage" >> $basedir/etc/VMStorages
+
+useradd pvm -d $basedir/etc/pvm-home
+echo ". /etc/pvm.conf" >> $basedir/etc/pvm-home/.bash_profile
+echo "PATH=\$PATH:\$HOME/bin:\$basedir/Scripts" >> $basedir/etc/pvm-home/.bash_profile
+echo "export PATH" >> $basedir/etc/pvm-home/.bash_profile
+echo "alias pvmctl=\"sudo pvmctl\"" >> $basedir/etc/pvm-home/.bash_profile
+echo "alias pcad=\"sudo pcad\"" >> $basedir/etc/pvm-home/.bash_profile
+
+echo ". /etc/pvm.conf" >> /root/.bash_profile
+echo "PATH=\$PATH:\$HOME/bin:\$basedir/Scripts" >> /root/.bash_profile
+echo "export PATH" >> /root/.bash_profile
+
+echo "install pvm-cluster packages ..."
+tar xjf pcad-git.tar.bz2
+cp -r ./pcad-git/* $basedir/Scripts
+
+ln -s $basedir /PDNSoftCo. 2>/dev/null
+
+echo "Cronning tasks ..."
+echo "0 23 * * 5 root /pvm/Scripts/pvm-rotate-logs" >> /etc/crontab
+service crond restart >/dev/null 2>&1
+
+echo -n "Give me pkv version: "
+read v
+ln -s "$basedir/Scripts/funcs/cluster$v" "$basedir/Scripts/funcs/cluster"
+
+echo "Installation completed ..."
+echo "Adjust $basedir/etc/VMStorages content to define places of vm-disks ..."
+
