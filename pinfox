@@ -1,0 +1,45 @@
+#!/bin/bash
+# PVM Info in XML Format
+# This Scripts generate PVM information in xml format ...
+# PVMM (PVM Management Interface) Will use this Script
+
+. /etc/pvm.conf
+. "$funcdir/vm"
+. "$funcdir/pinfox"
+
+scriptname="pinfox"
+scriptversion="0.$xver"
+
+pinfox_help()
+{
+	$cat <<-end-of-help
+$scriptname $scriptversion
+$scriptname generates PVM information in XML format.
+
+        usage:   $scriptname vminfo host		- host(virtual machine) information in XML format
+                 $scriptname sids			- list of storages of virtual machines 
+                 $scriptname tmpls			- list of templates
+                 $scriptname isos			- list of iso files
+	end-of-help
+}
+
+case "$1" in
+	"vminfo")
+		pinfox_vminfo "$2"
+		;;
+	"sids") 
+		pinfox_sids
+		;;
+	"tmpls") 
+		pinfox_tmpls
+		;;
+	"isos") 
+		pinfox_isos
+		;;
+	"help")
+		pinfox_help
+		;;
+	*)
+		echo_error "bad command, use \"$scriptname help\" for more detail."
+		;;
+esac

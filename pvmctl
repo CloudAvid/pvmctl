@@ -3,6 +3,7 @@
 # PVM Manager Script
 
 . /etc/pvm.conf
+. "$funcdir/vm"
 
 # The file to use as a template when creating new VM configs
 template="$basedir/Scripts/template.pvm"
@@ -18,23 +19,22 @@ vlanifup="$basedir/Scripts/ifup-vlan"
 minmem="128"
 maxmem="16384"
 
+# Maximum number of cpus per virtual machine
+maxcpus="16"
+
 # How long to sleep at certain points in the script
 sleeptime="3"
 
 
 # What are we called?
-scriptname=$( ${basename} $0 )
-scriptversion="2.3.2"
+scriptname=$( "$basename" "$0" )
+scriptversion="2.4.0"
 
 # Functions used in the script
 load_defaults()
 {
 	# How much RAM to associate with the VM.
 	defmem="512"
-
-	# The number of virtual CPUs to assign to the VM.
-	# Stable values are 1-4
-	defcpus="1"
 
 	# Which mouse device to use
 	# Values:  mouse, tablet
@@ -57,60 +57,8 @@ load_defaults()
 	# Values for acpi:  no, "blank"
 	# no disables ACPI support in the VM
 	defacpi=""
-}
 
-# set "vmstrg" and "strgtype" variables.
-# usage: _verify_vmstrg "vm_name" "sid"
-_verify_vmstrg()
-{
-	sid="$2"
-
-	# Default Storage Path ..
-	vmstrg="$def_vmstrg/$1"
-	strgtype="$def_strgtype"
-
-	for __i in $( read_config_file "$cf_VMStorages" ); do
-		__id=`echo $__i | cut -s -d ";" -f 1`;
-		if [[ $__id -eq $sid ]]; then
-			strgtype=`echo $__i | cut -s -d ";" -f 2`;
-			__path=`echo $__i | cut -s -d ";" -f 3`;
-			case $strgtype in
-				$STRG_FS)
-					vmstrg="$__path/$1"
-					;;
-				$STRG_VG)
-					vmstrg="$__path"
-					;;
-				*)
-					echo_error "Bad storage type !"
-					exit 1
-			esac
-		fi
-	done
-}
-
-load_configfile()
-{
-	# suck in the content of config file
-	if [ -r "$confdir/$1.pvm" ]; then
-		. "$confdir/$1.pvm"
-		_verify_vmstrg "$1" "$sid"
-	fi
-}
-
-check_host()
-{
-	# Check if a VM host name was given on the commandline
-	if [ -z "$1" ]; then
-		echo_error "Missing host to work on."
-		exit 1
-	fi
-
-	# Check if the host name given corresponds to a configured VM
-	if [ ! -e "$confdir/$1.pvm" ]; then
-		echo_error "The host you want to manage ($1) doesn't exist. "
-		exit 1
-	fi
+	defcache="none"
 }
 
 do_start()
@@ -172,6 +120,23 @@ do_start()
 		case "${media[i]}" in
 			disk)
 				media="disk"
+				case "${cache[i]}" in
+					"none")
+						cachestr=",cache=none"	
+						;;
+					"writeback")
+						cachestr=",cache=writeback"
+						;;
+					"unsafe")
+						cachestr=",cache=unsafe"
+						;;
+					"writethrough")
+						cachestr=",cache=writethrough"
+						;;
+					*)
+						cachestr=",cache=$defcache"
+						;;
+				esac
 				;;
 			cdrom)
 				media="cdrom"
@@ -260,7 +225,7 @@ do_start()
 
 
 		# Build the drive entry that will be passed to kvm
-		drives="$drives -drive index=$index,media=$media,if=${disktype}${extboot},file=${disk}"
+		drives="$drives -drive index=$index,media=$media,if=$disktype,file=$disk$extboot$cachestr"
 	done
 
 	if [[ ($ide_index -eq 0) && ($virtio_index -eq 0) && ($scsi_index -eq 0) ]]; then
@@ -270,26 +235,6 @@ do_start()
 
 	# Set Monitoring to telnet
 	confmonitor="unix:$mondir/${host},server,nowait,nodelay";
-	# Check which device to boot from
-	if [ ! -z ${boot} ]; then
-		case "${boot}" in
-			a)
-				confboot="a"
-				;;
-			b)
-				confboot="b"
-				;;
-			c)
-				confboot="c"
-				;;
-			d)
-				confboot="d"
-				;;
-			*)
-				confboot=${defboot}
-				;;
-		esac
-	fi
 
 	# Check which virtual NIC chipset to use
 	case "${nic}" in
@@ -370,68 +315,57 @@ do_start()
 			confacpi="-no-acpi"
 			;;
 		*)
-			confacpi=${defacpi}
+			confacpi="$defacpi"
 			;;
 	esac
 
-	# Check number of virtual CPUs to use
-	case "${cpus}" in
-		1)
-			confcpus="1"
-			;;
-		2)
-			confcpus="2"
-			confacpi=${defacpi}
-			;;
-		3)
-			confcpus="3"
-			confacpi=${defacpi}
-			;;
-		4)
-			confcpus="4"
-			confacpi=${defacpi}
-			;;
-		*)
-			confcpus=${defcpus}
-			confacpi=${defacpi}
-			;;
-	esac
-
-	# Check amount of RAM to be assigned to the VM
-	if [ ${mem} -lt ${minmem} -o ${mem} -gt ${maxmem} ]; then
-		echo "Warning: Virtual RAM is not between ${minmem} and ${maxmem}.  Setting virtual RAM to ${defmem}."
-		confmem=${defmem}
+	if [[ "$cpus" -lt "1" || "$cpus" -gt "$maxcpus" ]]; then
+		echo "Warinig: Number of cpus is not netween 1 and $maxcpus. Setting cpus to $defcpus."
+		confcpus="$defcpus"
 	else
-		confmem=${mem}
+		confcpus="$cpus"
+	fi
+		
+	# Check amount of RAM to be assigned to the VM
+	if [[ $mem -lt $minmem || $mem -gt $maxmem ]]; then
+		echo "Warning: Virtual RAM is not between $minmem and $maxmem.  Setting virtual RAM to $defmem."
+		confmem="$defmem"
+	else
+		confmem="$mem"
 	fi
 
 	# Check for host-usb device
-	if [[ ! -z ${host_usb1} ]]; then
-		confusb1="-usbdevice host:${host_usb1}"
+	if [[ ! -z $host_usb1 ]]; then
+		confusb1="-usbdevice host:$host_usb1"
 	fi
 
 	# Setting Spice port
 	spiceport=$(( id + spicebport ))
+	if [[ -z $password ]]; then
+		sppasswd="disable-ticketing"
+	else
+		sppasswd="password=$password"
+	fi
 
 	# Start the VM
 	echo "Attempting to start VM for ${1} ..."
 	${kvm} \
-		-name ${host} \
-		-smp ${confcpus} \
-		-m ${confmem} \
-		-vnc :${id} \
-		-spice port=${spiceport},disable-ticketing \
+		-name $host \
+		-smp $confcpus \
+		-m $confmem \
+		-vnc "$( $uname -n ):$id" \
+		-spice addr=$( $uname -n ),port=$spiceport,$sppasswd \
 		-daemonize \
 		-localtime \
 		-usb \
-		-usbdevice ${confmouse} \
+		-usbdevice $confmouse \
 		$confnet \
-		-pidfile ${piddir}/${host}.pid \
-		-boot ${confboot} \
-		-monitor ${confmonitor} \
-		${confusb1} \
-		${confacpi} \
-		${drives} 
+		-pidfile "$piddir/$host.pid" \
+		-boot order=$boot \
+		-monitor $confmonitor \
+		$confusb1 \
+		$confacpi \
+		$drives
 	# check if the vm is running?
 	if [[ $? -eq 1 ]]; then
 		echo_error "some error in starting $host"
@@ -600,7 +534,7 @@ do_mkimg()
 					echo_error "Can't create \"$vmstrg\" directory !"
 				fi
 			fi
-			$kvmimg create -f qcow2 "$vmstrg/${2}" "${3}" > /dev/null
+			$kvmimg create -f qcow2 -o preallocation=metadata "$vmstrg/${2}" "${3}" > /dev/null
 			;;
 		$STRG_VG)
 			$lvcreate -A y -n "$2" -L "$3" "$vmstrg" > /dev/null
@@ -818,7 +752,7 @@ _rebuild_conf()
 
 	# set defaults
 	if [[ -z $sid ]]; then
-		sid=1
+		sid=0
 	fi
 
 	# save new config
@@ -834,6 +768,7 @@ _rebuild_conf()
 	echo "nic=\"$nic\"" >> "$confdir/${clist[0]}.pvm"
 	echo "boot=\"$boot\"" >> "$confdir/${clist[0]}.pvm"
 	echo "host_usb1=\"$host_usb1\"" >> "$confdir/${clist[0]}.pvm"
+	echo "password=\"$password\"" >> "$confdir/${clist[0]}.pvm"
 	
 	no_vdisk=${#disk[@]}
 	np_vdisk=0
@@ -847,6 +782,7 @@ _rebuild_conf()
 		echo "disktype[$i]=\"${disktype[i]}\"" >> "$confdir/${clist[0]}.pvm"
 		echo "media[$i]=\"${media[i]}\"" >> "$confdir/${clist[0]}.pvm"
 		echo "disk[$i]=\"${disk[i]}\"" >> "$confdir/${clist[0]}.pvm"
+		echo "cache[$i]=\"${cache[i]}\"" >> "$confdir/${clist[0]}.pvm"
 	done
 
 	no_eths=${#vlan[@]}
@@ -897,14 +833,15 @@ do_genid()
 # usage: new name-of-new-vm [sid]
 do_new()
 {
-	if [[ -z $1 ]]; then
-		echo_usage "new host_name [sid]"
+	if [[ -z $1 || -z $2 ]]; then
+		echo_usage "new host_name sid"
 		exit 1
 	fi
 	if [[ -e ${confdir}/${1}.pvm ]]; then
 		echo_error "Your host exists right now ..."
 		exit 0;
 	fi
+	_verify_vmstrg "$1" "$2"
 	if [ -r ${template} ]; then
 		if [ -w ${confdir} ]; then
 			$sed -e "s/^id=\".*\"/id=\"$( do_genid )\"/"  ${template} > "${confdir}/${1}.pvm"
@@ -925,8 +862,8 @@ do_new()
 # Create A Virtual Machine from a template (base image)
 do_create()
 {
-	if [[ -z ${1} || -z ${2} ]]; then
-		echo_usage "create template_name host_name [sid]"
+	if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
+		echo_usage "create template_name host_name sid"
 		exit 1
 	fi
 
@@ -964,7 +901,7 @@ do_create()
 
 do_clone()
 {
-	if [[ -z ${1} || -z ${2} ]]; then
+	if [[ -z $1 || -z $2 ]]; then
 		echo_usage "clone host clone_name [clone_sid]";
 		exit 1;
 	fi	
@@ -1319,7 +1256,7 @@ do_lst()
 {
 	echo "list of virtual machine templates:"
 	echo "----------------------------------"
-	for I in `ls ${bidir}`; do
+	for I in `$ls ${bidir}`; do
 		_conf=`expr match "$I" ".*.pvm"`
 		if [[ $_conf -eq 0 ]]; then
 			echo "$I"
@@ -1331,21 +1268,21 @@ do_lscd()
 {
 	echo "list of CD Images (ISO files):"
 	echo "------------------------------"
-	for I in `ls ${isodir}`; do
+	for I in `$ls ${isodir}`; do
 		echo "$I"
 	done
 }
 
 do_lsid()
 {
-	echo "Default storage: $def_vmstrg"
-	printf "%-10s%-10s%s\n" "ID" "Type" "Storage Path"
-	printf "%-10s%-10s%s\n" "--" "----" "------------"
-	for __i in $( read_config_file "$cf_VMStorages" ); do
-		__id=`echo $__i | cut -s -d ";" -f 1`;
-		__type=`echo $__i | cut -s -d ";" -f 2`;
-		__path=`echo $__i | cut -s -d ";" -f 3`;
-		printf "%-10s%-10s%s\n" $__id $__type $__path
+	printf "%-10s%-10s%-30s%s\n" "ID" "Type" "Storage Path" "name"
+	printf "%-10s%-10s%-30s%s\n" "--" "----" "------------" "----"
+	read_config_file "$cf_VMStorages" | while read __i; do
+		__id=$(echo $__i | $cut -s -d ";" -f 1)
+		__type=$(echo $__i | $cut -s -d ";" -f 2)
+		__path=$(echo $__i | $cut -s -d ";" -f 3)
+		__name=$(echo $__i | $cut -s -d ";" -f 4)
+		printf "%-10s%-10s%-30s%s\n" "$__id" "$__type" "$__path" "$__name"
 	done
 }
 
@@ -1618,8 +1555,8 @@ do_usage()
 	        ${scriptname} rmimg    host image_name             - remove disk image of the host
 	        ${scriptname} rnimg    host image_name new_name    - rename disk image of the host
 	
-	        ${scriptname} new      host_name [sid]             - Create A virtual machine
-	        ${scriptname} create   template host_name [sid]    - Create A virtual machine from template
+	        ${scriptname} new      host_name sid               - Create A virtual machine
+	        ${scriptname} create   template host_name sid      - Create A virtual machine from template
 	        ${scriptname} clone    host clone_name [new_sid]   - creating a clone from the host
 
 	        ${scriptname} rename   host new_name               - rename host to new_name

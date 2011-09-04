@@ -9,7 +9,7 @@ id="##"
 # VM Storage ID
 # Defines storage of it's images ...
 # Storage repository placed at $basedir/etc/VMStorages
-sid="1"
+sid="0"
 
 # VM IP-Address
 ip=""
@@ -72,29 +72,36 @@ host_usb1=""
 # 			rebase meaningfull for "disk"s.
 # 			it shows the last rebasing activity.. "pvmctl rebase ..."
 
+# Values for cache:	"none", "writeback", "unsafe", or "writethrough"
+# 			default is: none
+
 # The first virtual block device
 #disktype[0]=""
 #media[0]=""
 #disk[0]=""
 #rebase[0]="0"
+#cache[0]=""
 
 # The second virtual block device
 #disktype[1]=""
 #media[1]=""
 #disk[1]=""
 #rebase[1]="0"
+#cache[1]=""
 
 # The third virtual block device
 #disktype[2]=""
 #media[2]=""
 #disk[2]=""
 #rebase[2]="0"
+#cache[2]=""
 
 # The fourth virtual block device
 #disktype[3]=""
 #media[3]=""
 #disk[3]=""
 #rebase[3]=""
+#cache[3]=""
 
 # you can define more disk as you wish ...
 # ...

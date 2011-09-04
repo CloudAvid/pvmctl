@@ -7,7 +7,7 @@ if [[ $yes = "y" ]]; then
 fi
 
 echo "install pvm packages ..."
-tar xjf pvmctl-git.tar.bz2
+tar xjf pvmctl-git*
 
 . ./pvmctl-git/root-etc/pvm.conf 
 
@@ -16,9 +16,10 @@ mkdir -p "$basedir/etc/pvm"
 mkdir -p "$basedir/var/{run,mon,log}"
 mkdir -p "$basedir/VMStorage/{BIs,FLPs,ISOs,VMs}"
 mkdir -p "$logdir"
+touch -p "$logdir/vms.log"
 
-cp ./pvmctl-git/* $basedir/Scripts 2>/dev/null
-cp -r ./pvmctl-git/root-etc $basedir/
+cp -r ./pvmctl-git/* $basedir/Scripts 2>/dev/null
+cp -r ./pvmctl-git/root-etc $basedir/ 2>/dev/null
 
 ln -s $basedir/root-etc/pvm.conf /etc/pvm.conf 2>/dev/null
 
@@ -40,10 +41,12 @@ echo "# Place Of Log file ... for VM Services" > $basedir/etc/vm-services-log-fi
 echo "vms.log" >> $basedir/etc/vm-services-log-file
 
 echo "# Path to virtaul machine images" > $basedir/etc/VMStorages
-echo "# Format: id;type;path" >> $basedir/etc/VMStorages
+echo "# Format: id;type;path;name" >> $basedir/etc/VMStorages
 echo "#         id: could be a number, 1, 2 ..." >> $basedir/etc/VMStorages
 echo "#         type: could be fs: for a generic file system storage, or vg: for a volume group" >> $basedir/etc/VMStorages
 echo "#         path: could be full path to the storage" >> $basedir/etc/VMStorages
+echo "#         name: could be an string, for storage name" >> $basedir/etc/VMStorages
+echo "0;fs;/pvm/VMStorage/VMs;Default storage" >> $basedir/etc/VMStorages
 
 useradd pvm -d $basedir/etc/pvm-home
 echo ". /etc/pvm.conf" >> $basedir/etc/pvm-home/.bash_profile
@@ -57,8 +60,11 @@ echo "PATH=\$PATH:\$HOME/bin:\$basedir/Scripts" >> /root/.bash_profile
 echo "export PATH" >> /root/.bash_profile
 
 echo "install pvm-cluster packages ..."
-tar xjf pcad-git.tar.bz2
+tar xjf pcad-git*
 cp -r ./pcad-git/* $basedir/Scripts
+cp ./pcad-git/tnc_tool /sbin/
+
+chmod o-rx $basedir/Scripts/funcs
 
 ln -s $basedir /PDNSoftCo. 2>/dev/null
 

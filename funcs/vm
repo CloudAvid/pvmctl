@@ -1,0 +1,56 @@
+#!/bin/bash
+# Basic functions to manage virtual machines
+
+check_host()
+{
+	# Check if a VM host name was given on the commandline
+	if [ -z "$1" ]; then
+		echo_error "Missing host to work on."
+		exit 1
+	fi
+	# Check if the host name given corresponds to a configured VM
+	if [ ! -e "$confdir/$1.pvm" ]; then
+		echo_error "The host you want to manage ($1) doesn't exist. "
+		exit 1
+	fi
+}
+
+# set "vmstrg" and "strgtype" variables.
+# usage: _verify_vmstrg "vm_name" "sid"
+_verify_vmstrg()
+{
+	sid="$2"
+
+	tx=$(read_config_file "$cf_VMStorages"| while read __i; do
+		__id=`echo $__i | cut -s -d ";" -f 1`;
+		if [[ $__id -eq $sid ]]; then
+			strgtype=`echo $__i | cut -s -d ";" -f 2`;
+			__path=`echo $__i | cut -s -d ";" -f 3`;
+			case $strgtype in
+				($STRG_FS)
+					vmstrg="$__path/$1"
+					;;
+				($STRG_VG)
+					vmstrg="$__path"
+					;;
+				(*)
+					exit 1
+					;;
+			esac
+			echo "$vmstrg;$strgtype"
+			exit 0
+		fi
+	done)
+	if [[ -z "$tx" ]]; then echo_error "Bad storage id !"; exit 1; fi
+	strgtype=`echo $tx | cut -s -d ";" -f 2`;
+	vmstrg=`echo $tx | cut -s -d ";" -f 1`;
+}
+
+load_configfile()
+{
+	if [ -r "$confdir/$1.pvm" ]; then
+		. "$confdir/$1.pvm"
+		_verify_vmstrg "$1" "$sid"
+	fi
+}
+
