@@ -361,7 +361,7 @@ do_start()
 		-usbdevice $confmouse \
 		$confnet \
 		-pidfile "$piddir/$host.pid" \
-		-boot order=$boot \
+		-boot menu=on,order=$boot \
 		-monitor $confmonitor \
 		$confusb1 \
 		$confacpi \

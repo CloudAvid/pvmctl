@@ -5,21 +5,18 @@
 xver="0.1"
 
 # Generate VM Information list
-# usage: pinfox_vminfo host
-pinfox_vminfo()
+# usage: _pinfox_vminfo host
+_pinfox_vminfo()
 {
 	local infox
 	local first_disk
 	local no_vdisk
 	local np_vdisk
-	if [ -z $1 ]; then
-		echo_usage "vminfo host"
-		exit 1
-	fi
+
 	check_host "$1"
 	load_configfile "$1"
 
-	infox="<pvm ver=\"$xver\"><name>$1</name>"
+	infox="<name>$1</name>"
 	infox+="<id>$id</id><sid>$sid</sid>"
 	infox+="<des>$des</des><ip>$ip</ip>"
 	infox+="<vsys>"
@@ -95,8 +92,41 @@ pinfox_vminfo()
 			done)
 	fi
 	infox+="</snaps></venv>"
-	infox+="</pvm>"
+	#infox+="</pvm>"
 	echo "$infox"
+}
+
+# Hourse of _pinfox_vminfo 
+pinfox_vminfo()
+{
+	local infox
+	if [ -z $1 ]; then
+		echo_usage "vminfo host"
+		exit 1
+	fi
+	infox="<pvm ver=\"$xver\">"
+	infox+=$( _pinfox_vminfo $1 )
+	infox+="</pvm>"	
+	echo $infox
+}
+
+pinfox_vms()
+{
+	local infox
+	local vms
+	local vms_no
+	local i
+	infox="<pvm_vms ver=\"$xver\">"
+	vms=($( $pcad status | $grep service | $cut -d ":" -f 2 ))
+	vms_no=$((${#vms[@]} / 3))
+	for ((i=0; i<$vms_no; ++i)); do
+		infox+="<pvm>"
+		infox+=$( pinfox_vminfo ${vms[i*3]} )
+		infox+="<cluster><node>${vms[i*3+1]}</node><status>${vms[i*3+2]}</status></cluster>"
+		infox+="</pvm>"
+	done
+	infox+="</pvm_vms>"
+	echo $infox
 }
 
 # Generate List of SIDs

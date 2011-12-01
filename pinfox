@@ -17,6 +17,7 @@ $scriptname $scriptversion
 $scriptname generates PVM information in XML format.
 
         usage:   $scriptname vminfo host		- host(virtual machine) information in XML format
+                 $scriptname vms			- list of all virtual machines
                  $scriptname sids			- list of storages of virtual machines 
                  $scriptname tmpls			- list of templates
                  $scriptname isos			- list of iso files
@@ -26,6 +27,9 @@ $scriptname generates PVM information in XML format.
 case "$1" in
 	"vminfo")
 		pinfox_vminfo "$2"
+		;;
+	"vms")
+		pinfox_vms "$2"
 		;;
 	"sids") 
 		pinfox_sids
