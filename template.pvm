@@ -108,10 +108,9 @@ host_usb1=""
 
 #  Define Virtual Networks for machine ...
 #  Values of each vlan may be:
-#+ "":				the default ethernet script will be used for this interface
-#+ "VLAN-ID": 			ethernet script for this vlan will be used for this interface
+#+ "virtual-switch-name":	name of virtual switch (bridge name)
 #+ "/full/path/to/script"	defines the full path to the custom script
-#vlan[0]="9"
+#vlan[0]="vsw9"
 #
 # Network MacAddress, 
 # Thair Values will be created by pvmctl at creation(edit, clone) time.

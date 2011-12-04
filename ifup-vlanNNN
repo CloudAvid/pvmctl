@@ -1,6 +1,0 @@
-#!/bin/sh
-# kvm ifup script ..
-
-. /etc/pvm.conf
-
-"$basedir/Scripts/ifup-vlan#" NNN "$1"

@@ -12,17 +12,17 @@ $ifconfig $teth 0.0.0.0 up
 
 $modprobe "8021q" 
 
-for i in `$sed -e "/^#/d" "$basedir/etc/vlans" `; do
+for i in $( read_config_file "$basedir/etc/vlans" ); do
 	$vconfig add $teth $i
 	$ifconfig $teth.$i 0.0.0.0 up
 
-	$brctl addbr brv$i
+	$brctl addbr vsw$i
 	if [[ "$?" -eq "0" ]]; then
-		$ifconfig brv$i 0.0.0.0 up
+		$ifconfig vsw$i 0.0.0.0 up
 	fi
 
-	$brctl addif brv$i $teth.$i
-	$brctl stp brv$i on
+	$brctl addif vsw$i $teth.$i
+	$brctl stp vsw$i on
 done
 
 

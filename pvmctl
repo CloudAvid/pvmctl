@@ -13,6 +13,7 @@ defifup="$basedir/Scripts/pvm-ifup"
 
 # Vlan ifups Prefix
 vlanifup="$basedir/Scripts/ifup-vlan"
+downifup="$basedir/Scripts/ifup-down"
 
 #  Adjust these as needed.  These are the min and max amount
 #+ of RAM to assign to a VM, in MB
@@ -263,18 +264,34 @@ do_start()
 		fi
 		np_eths=$(( ++np_eths ))
 
-		eth_script="$defifup"
+		eth_script=""
+		eth_script_cmd=""
 		if [[ ! -z "${vlan[i]}" ]]; then
 			if [[ $(expr ${vlan[i]} : '/') -eq 0 ]]; then
-				eth_script="$vlanifup${vlan[i]}"
+				$brctl showmacs "${vlan[i]}" >/dev/null 2>&1
+				if [[ "$?" -ne "0" ]]; then
+					echo_error "bad virtual switch ${vlan[i]} !"
+					exit 1
+				fi
+				__vsw="${vlan[i]}"
+				__if="$__vsw--vm$id$i"
+				$tunctl -t "$__if" >/dev/null 2>&1
+				tap_mac_addr=$(echo $($ifconfig -a $__if | grep HWaddr) | $cut -d " " -f 5)
+				tap_mac_addr="FE:${tap_mac_addr#*:}"
+				$ip_cmd link set "$__if" address "$tap_mac_addr"
+				$ifconfig "$__if" 0.0.0.0 up
+				# bridge vlan[i] exists, just add new interface to it
+				$brctl addif "$__vsw" "$__if" >/dev/null 2>&1
+				eth_script_cmd="script=no,downscript=$downifup"
 			else
 				# vlan[i] contains full path to the eth. script
 				eth_script="${vlan[i]}"
+				if [[ ! -x "$eth_script" ]]; then
+					echo_error "ethernet script \"$eth_script\" is not executable"
+					exit 1
+				fi
+				eth_script_cmd="script=$eth_script"
 			fi
-		fi
-		if [[ ! -x "$eth_script" ]]; then
-			echo_error "ethernet script \"$eth_script\" is not executable"
-			exit 1
 		fi
 
 		# Setting specific device type for this vlan
@@ -289,11 +306,13 @@ do_start()
 				confnic="virtio"
 				;;
 			*)
-				#confnic=${defnic}
+				confnic=${defnic}
 				;;
 		esac
 		confnet=" $confnet -net nic,macaddr=${macaddr[i]},vlan=$i,model=${confnic} \
-				-net tap,vlan=$i,ifname=vm${id}$i,script=$eth_script"
+				-net tap,vlan=$i,ifname=$__if,$eth_script_cmd"
+		unset __if
+		unset __vsw
 	done
 
 	# Check which virtual mouse chipset to use
@@ -969,7 +988,7 @@ do_clone()
 			continue;
 		fi
 		np_eths=$(( ++np_eths ))
-		__eth_str="$__eth_str vlan[$i]=\"${vlan[i]}\""
+		__eth_str="$__eth_str vlan[$i]=\"${vlan[i]}\" vlantype[$i]=\"${vlantype[i]}\""
 		if [[ -z "$DO_CLONE_FIX_MACS" ]]; then macaddr[i]=""; fi
 	done
 

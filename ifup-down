@@ -1,0 +1,12 @@
+#!/bin/bash
+
+. /etc/pvm.conf
+
+if="$1"
+vsw="${if%--*}"
+
+$brctl delif $vsw $if
+$ifconfig $if down
+$tunctl -d $if
+
+exit 0
