@@ -1,0 +1,120 @@
+#!/bin/bash
+
+echo -n "i want delete pvm user if exists, delete him?(y/*) " 
+read yes;
+if [[ $yes = "y" ]]; then
+	userdel -r pvm 2>/dev/null
+fi
+
+. ./root-etc/pvm.conf 
+
+mkdir -p $basedir/{etc,root-etc,Scripts,var,VMStorage}
+mkdir -p $basedir/etc/pvm
+mkdir -p $basedir/var/{run,mon,log}
+mkdir -p $basedir/VMStorage/{BIs,FLPs,ISOs,VMs}
+mkdir -p $logdir
+touch "$logdir/vms.log"
+touch "$logdir/bp.log"
+touch "$logdir/rsync.log"
+
+cp ./* $basedir/Scripts/ 2>/dev/null
+cp -r ./funcs/ $basedir/Scripts/ 2>/dev/null
+cp -r ./root-etc/ $basedir/ 2>/dev/null
+cp pshell pshell.sh /bin/ 2>/dev/null
+
+unlink /etc/pvm.conf 2>/dev/null
+ln -s $basedir/root-etc/pvm.conf /etc/pvm.conf 2>/dev/null
+
+if [[ ! -f $basedir/etc/backup-log-file ]]; then
+	echo "# Log file for backup process activities" > $basedir/etc/backup-log-file
+	echo "bp.log" >> $basedir/etc/backup-log-file
+fi
+
+if [[ ! -f $basedir/etc/rsite-sync-log-file ]]; then
+	echo "# Log file for Remote Site Syncronization Process" > $basedir/etc/rsite-sync-log-file
+	echo "rsync.log" >> $basedir/etc/rsite-sync-log-file
+fi
+
+if [[ ! -f $basedir/etc/snap-exclude ]]; then
+	echo "#  This files Contains the name of VMs, should be excluded from" > $basedir/etc/snap-exclude
+	echo "#+ Making Snapshots(pvm rotationl snapshot) process." >> $basedir/etc/snap-exclude
+	echo "#  Names Seprate in lines." >> $basedir/etc/snap-exclude
+fi
+
+if [[ ! -f $basedir/etc/trunk-eth ]]; then
+	echo "# defines Ethernet Interface that is connected to the trunk connection" > $basedir/etc/trunk-eth
+fi
+
+if [[ ! -f $basedir/etc/vlans ]]; then
+	echo "#Vlan Numbers" > $basedir/etc/vlans
+fi
+
+if [[ ! -f $basedir/etc/vm-services-log-file ]]; then
+	echo "# Place Of Log file ... for VM Services" > $basedir/etc/vm-services-log-file
+	echo "vms.log" >> $basedir/etc/vm-services-log-file
+fi
+
+if [[ ! -f $basedir/etc/VMStorages ]]; then
+	echo "# Path to virtaul machine images" > $basedir/etc/VMStorages
+	echo "# Format: id;type;path;name" >> $basedir/etc/VMStorages
+	echo "#         id: could be a number, 1, 2 ..." >> $basedir/etc/VMStorages
+	echo "#         type: could be fs: for a generic file system storage, or vg: for a volume group" >> $basedir/etc/VMStorages
+	echo "#         path: could be full path to the storage" >> $basedir/etc/VMStorages
+	echo "#         name: could be an string, for storage name" >> $basedir/etc/VMStorages
+fi
+
+cat "$basedir/etc/VMStorages" | grep "/pvm/VMStorage/VMs;" > /dev/null
+if [[ $? -ne 0 ]]; then
+	echo "0;fs;/pvm/VMStorage/VMs;Default storage" >> $basedir/etc/VMStorages
+fi
+for i in $(ls /$basedir/etc/pvm); do
+	. $basedir/etc/pvm/$i
+
+	tx=$(read_config_file "$cf_VMStorages"| while read __i; do
+		__id=`echo $__i | cut -s -d ";" -f 1`;
+		if [[ $__id -eq $sid ]]; then
+			echo "$vmstrg;$strgtype"
+			exit 0
+		fi
+	done)
+	if [[ -z "$tx" ]]; then 
+		sed -i -e "s/^sid=\".*\"/sid=\"0\"/" $basedir/etc/pvm/$i
+		echo "sid for $i changed to 0 "
+	fi
+done
+
+useradd -s /bin/pshell -p pvmuser@pvm pvm
+# changing sudo 
+chmod +w /etc/sudoers
+cat "/etc/sudoers" | grep "pvm" > /dev/null
+if [[ $? -ne 0 ]]; then
+	echo "pvm     ALL= NOPASSWD: /pvm/Scripts/pvmctl, /pvm/Scripts/pcad, /pvm/Scripts/pinfox, /usr/bin/scp" >> /etc/sudoers
+fi
+# change sudo settings to work without standard input
+sed -i -e "/Defaults    requiretty/d" /etc/sudoers
+chmod -w /etc/sudoers
+
+chmod o+r "$basedir/root-etc/pvm.conf"
+
+echo ". /etc/pvm.conf" >> /root/.bash_profile
+echo "PATH=\$PATH:\$HOME/bin:\$basedir/Scripts" >> /root/.bash_profile
+echo "export PATH" >> /root/.bash_profile
+
+chmod o-rx "$basedir/Scripts/funcs"
+
+unlink /PDNSoftCo. 2>/dev/null
+ln -s $basedir/ /PDNSoftCo. 2>/dev/null
+
+echo "Cronning tasks ..."
+cat /etc/crontab | grep "/pvm/Scripts/pvm-rotate-logs" > /dev/null
+if [[ $? -ne 0 ]]; then
+	echo "0 23 * * fri root /pvm/Scripts/pvm-rotate-logs" >> /etc/crontab
+fi
+cat /etc/crontab | grep "/sbin/hwclock -w" > /dev/null
+if [[ $? -ne 0 ]]; then
+	echo "02 0 * * * root /sbin/hwclock -w" >> /etc/crontab
+fi
+service crond restart >/dev/null 2>&1
+
+echo "Installation completed ..."
+

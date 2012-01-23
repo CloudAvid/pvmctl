@@ -4,7 +4,7 @@
 # This is used to generate the tap device in the host, and
 # the VNC port for the VM's console, 
 # and also telnet port for monitor console.
-id="##"
+id="0"
 
 # VM Storage ID
 # Defines storage of it's images ...

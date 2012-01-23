@@ -96,6 +96,22 @@ _pinfox_vminfo()
 	echo "$infox"
 }
 
+pinfox_hostinfo()
+{
+        local infox
+        infox="<pvm_host ver=\"$xver\">"
+	infox+="<hostname>`hostname`"
+	infox+="<cpus>`cat /proc/cpuinfo | grep processor | wc -l`</cpus>"
+	infox+="<cpumodel>`cat /proc/cpuinfo | grep "model name" | uniq`</cpumodel>"
+	infox+="<totalmemory>` cat /proc/meminfo | grep MemTotal | awk '{print $2}'`</totalmemory>"
+	infox+="<freememory>`cat /proc/meminfo | grep MemFree | awk '{print $2}'`</freememory>"
+	infox+="<swaptotal>`cat /proc/meminfo | grep SwapTotal | awk '{print $2}'`</swaptotal>"
+	infox+="<swapfree>`cat /proc/meminfo | grep SwapFree | awk '{print $2}'`</swapfree>"
+	infox+="</hostname>"
+	infox+="</pvm_host>"
+        echo $infox
+}
+
 # Hourse of _pinfox_vminfo 
 pinfox_vminfo()
 {
@@ -104,9 +120,9 @@ pinfox_vminfo()
 		echo_usage "vminfo host"
 		exit 1
 	fi
-	infox="<pvm ver=\"$xver\">"
+	infox="<vm ver=\"$xver\">"
 	infox+=$( _pinfox_vminfo $1 )
-	infox+="</pvm>"	
+	infox+="</vm>"	
 	echo $infox
 }
 

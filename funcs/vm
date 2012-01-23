@@ -23,7 +23,7 @@ _verify_vmstrg()
 
 	tx=$(read_config_file "$cf_VMStorages"| while read __i; do
 		__id=`echo $__i | cut -s -d ";" -f 1`;
-		if [[ $__id -eq $sid ]]; then
+		if [[ "$__id" = "$sid" ]]; then
 			strgtype=`echo $__i | cut -s -d ";" -f 2`;
 			__path=`echo $__i | cut -s -d ";" -f 3`;
 			case $strgtype in
