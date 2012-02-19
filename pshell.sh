@@ -25,6 +25,11 @@ case "$cmd" in
 "pinfox")
 	echo $sudo $pinfox ${args[@]} > $cmdfile
 	;;
+"echo")
+	if [[ "${args[1]}" = "y" ]]; then
+		echo "echo y" > $cmdfile
+	fi
+	;;
 "scp")
 	if [[ "${args[1]}" = "-t" || "${args[1]}" = "-p" ]]; then
 		# retreive path
@@ -69,6 +74,9 @@ case "$cmd" in
 		;;
 	"sed")
 		echo $sed ${args[@]} > $cmdfile
+		;;
+	"/PDNSoftCo./Scripts/pcad")
+		echo $sudo $pcad ${args[@]} > $cmdfile
 		;;
 	*)
 		echo_error "Bad piped command ..."
