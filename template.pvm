@@ -75,12 +75,17 @@ host_usb1=""
 # Values for cache:	"none", "writeback", "unsafe", or "writethrough"
 # 			default is: none
 
+# Values for snapshot:  is meaningfull for disks.
+# 			values: "on", "off" 
+# 			default is: off
+
 # The first virtual block device
 #disktype[0]=""
 #media[0]=""
 #disk[0]=""
 #rebase[0]="0"
 #cache[0]=""
+#snapshot[0]=""
 
 # The second virtual block device
 #disktype[1]=""
@@ -88,6 +93,7 @@ host_usb1=""
 #disk[1]=""
 #rebase[1]="0"
 #cache[1]=""
+#snapshot[1]=""
 
 # The third virtual block device
 #disktype[2]=""
@@ -95,6 +101,7 @@ host_usb1=""
 #disk[2]=""
 #rebase[2]="0"
 #cache[2]=""
+#snapshot[2]=""
 
 # The fourth virtual block device
 #disktype[3]=""
@@ -102,6 +109,7 @@ host_usb1=""
 #disk[3]=""
 #rebase[3]=""
 #cache[3]=""
+#snapshot[3]=""
 
 # you can define more disk as you wish ...
 # ...

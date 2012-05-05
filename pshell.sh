@@ -28,6 +28,9 @@ case "$cmd" in
 "echo")
 	if [[ "${args[1]}" = "y" ]]; then
 		echo "echo y" > $cmdfile
+	else if [[ "${args[1]}" = "-e" && "${args[2]}" = "\"y\ny\n\"" ]]; then
+		echo 'echo -e "y\ny\n"' > $cmdfile
+	fi
 	fi
 	;;
 "scp")
@@ -56,10 +59,31 @@ case "$cmd" in
 					exit 1
 			fi
 		fi
-		echo $sudo scp ${args[@]} > $cmdfile
-	else 
+		echo $sudo scp -q ${args[@]} > $cmdfile
+	else if [[ "${args[1]}" = "-f" ]]; then
+		# download action ...
+		dst_path="${args[2]}"
+		# restrict scp location to vm storages
+		tx=$( read_config_file "$cf_VMStorages"| while read __i; do
+			__path=$(echo $__i | $cut -s -d ";" -f 3)
+			if [[ $(expr $dst_path : "$__path") -ne "0" ]]; then
+				echo "accept"
+				exit 0
+			fi
+		done )
+
+		if [[ -z "$tx" ]]; then 
+			if [[ $(expr $dst_path : "/pvm/VMStorage") -eq 0 && \
+						$(expr $dst_path : "\"/PDNSoftCo./VMStorage") -eq 0 ]]; then
+					echo_error "Bad scp command ..."
+					exit 1
+			fi
+		fi
+		echo $sudo scp -q ${args[@]} > $cmdfile
+	else
 		echo_error "Bad scp command ..."
 		exit 1
+	fi
 	fi
 	;;
 "PIPED")

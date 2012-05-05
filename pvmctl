@@ -20,7 +20,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.5.1"
+scriptversion="2.6.0"
 
 # Functions used in the script
 load_defaults()
@@ -232,9 +232,17 @@ do_start()
 				;;
 		esac
 
+		case ${snapshot[i]} in
+			"on")
+				disksnapstr=",snapshot=on"
+				;;
+			"off")
+				disksnapstr=",snapshot=off"
+				;;
+		esac
 
 		# Build the drive entry that will be passed to kvm
-		drives="$drives -drive index=$index,media=$media,if=$disktype,file=$disk$extboot$cachestr"
+		drives="$drives -drive index=$index,media=$media,if=$disktype,file=$disk$extboot$cachestr$disksnapstr"
 	done
 
 	if [[ ($ide_index -eq 0) && ($virtio_index -eq 0) && ($scsi_index -eq 0) && ($cd_index -eq 2) ]]; then
@@ -388,6 +396,7 @@ do_start()
 		sppasswd="disable-ticketing"
 	else
 		sppasswd="password=$password"
+		vncpasswd=",password"
 	fi
 
 	# Start the VM
@@ -396,7 +405,7 @@ do_start()
 		-name $host \
 		-smp $confcpus \
 		-m $confmem \
-		-vnc "$( $uname -n ):$id" \
+		-vnc "$( $uname -n ):$id"$vncpasswd \
 		-spice addr=$( $uname -n ),port=$spiceport,$sppasswd \
 		-daemonize \
 		-localtime \
@@ -414,6 +423,9 @@ do_start()
 		echo_error "some error in starting $host"
 		exit 1
 	fi
+	# set vnc password 
+	echo "change vnc password $password" | $socat - UNIX-CONNECT:$mondir/$host > /dev/null
+
         # Reset the permissions on the PID file
 	if [ -e ${piddir}/${host}.pid ]; then
 		${chmod} 644 ${piddir}/${host}.pid
@@ -576,6 +588,7 @@ do_mkimg()
 				$mkdir -p "$vmstrg"
 				if [[ $? -ne 0 ]]; then
 					echo_error "Can't create \"$vmstrg\" directory !"
+					exit 1
 				fi
 			fi
 			$kvmimg create -f qcow2 -o preallocation=metadata "$vmstrg/${2}" "${3}" > /dev/null
@@ -589,6 +602,42 @@ do_mkimg()
 	esac
 	if [[ $? -eq 0 ]]; then
 		echo "Image \"$2\" created. "
+	else
+		echo_error "Can't create new disk: $( $perror $? )"
+		exit 1
+	fi
+}
+
+do_convertimg()
+{
+	if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
+		echo_usage "mkimg host image_name new_name";
+		exit 1;
+	fi
+	check_host ${1}
+	load_configfile "${1}"
+
+	if [[ -e "$vmstrg/$3" ]]; then
+		echo_error "Image \"$2\" exists right now !"
+		exit 1;
+	fi
+	case $strgtype in
+		$STRG_FS)
+			if [ ! -d "$vmstrg" ]; then
+				$mkdir -p "$vmstrg"
+				if [[ $? -ne 0 ]]; then
+					echo_error "Can't create \"$vmstrg\" directory !"
+					exit 1
+				fi
+			fi
+			$kvmimg convert -O qcow2 "$vmstrg/${2}" "$vmstrg/${3}" > /dev/null
+			;;
+		$STRG_VG)
+			echo_error "convert don't support LVM !"
+			;;
+	esac
+	if [[ $? -eq 0 ]]; then
+		echo "Image \"$3\" created. "
 	else
 		echo_error "Can't create new disk: $( $perror $? )"
 		exit 1
@@ -804,6 +853,7 @@ _rebuild_conf()
 	echo "boot=\"$boot\"" >> "$confdir/${clist[0]}.pvm"
 	echo "host_usb1=\"$host_usb1\"" >> "$confdir/${clist[0]}.pvm"
 	echo "password=\"$password\"" >> "$confdir/${clist[0]}.pvm"
+	echo "basevm=\"$basevm\"" >> "$confdir/${clist[0]}.pvm"
 	
 	no_usbs=${#host_usb[@]}
 	np_usbs=0
@@ -829,6 +879,7 @@ _rebuild_conf()
 		echo "media[$i]=\"${media[i]}\"" >> "$confdir/${clist[0]}.pvm"
 		echo "disk[$i]=\"${disk[i]}\"" >> "$confdir/${clist[0]}.pvm"
 		echo "cache[$i]=\"${cache[i]}\"" >> "$confdir/${clist[0]}.pvm"
+		echo "snapshot[$i]=\"${snapshot[i]}\"" >> "$confdir/${clist[0]}.pvm"
 	done
 
 	no_eths=${#vlan[@]}
@@ -957,9 +1008,9 @@ do_create()
 		do_new "$2" "$3"
 		if [[ -f "${bidir}/${1}.pvm" ]]; then 
 			$rm "/tmp/${2}-beta"
-			do_chconf "$2" disk[0]="$2-OS.qcow2"
+			do_chconf "$2" basevm="$1" disk[0]="$2-OS.qcow2"
 		else
-			do_chconf "$2" disktype[0]="ide" media[0]="disk" disk[0]="$2-OS.qcow2"
+			do_chconf "$2" basevm="$1" disktype[0]="ide" media[0]="disk" disk[0]="$2-OS.qcow2"
 		fi
 		"$mkdir" -p "$vmstrg" 
 		"$kvmimg" create -b  "$bidir/$1" -f  qcow2   "$vmstrg/$2-OS.qcow2" > /dev/null 
@@ -1466,6 +1517,7 @@ do_binfo()
 	_out="$_out""mouse_type $mouse\n" 
 	_out="$_out""network $nic\n" 
 	_out="$_out""first_boot $boot\n" 
+	_out="$_out""basevm $basevm\n" 
 	_out="$_out""host_usb1 $host_usb1\n" 	
 	echo -e "$_out" | awk '\
 		{
@@ -1473,8 +1525,8 @@ do_binfo()
 		}' 
 
 	echo "Virtual Machine Disks:"
-	_out="id media type rebase image\n"
-	_out="$_out""-- ----- ---- ------ -----\n"
+	_out="id media type rebase snap image\n"
+	_out="$_out""-- ----- ---- ---- ------ -----\n"
 	no_vdisk=${#disk[@]}
 	np_vdisk=0
 	for ((i=0; $np_vdisk < $no_vdisk; ++i)); do
@@ -1483,12 +1535,12 @@ do_binfo()
 			continue
 		fi
 		(( ++np_vdisk ))
-		_out="$_out""$i ${media[i]} ${disktype[i]} ${rebase[i]} ${disk[i]}\n"
+		_out="$_out""$i ${media[i]} ${disktype[i]} ${rebase[i]} ${snapshot[i]} ${disk[i]}\n"
 	done
 
 	echo -e "$_out" | awk '\
 		{
-			printf "%-10s%-15s%-10s%-10s%s\n", $1, $2, $3, $4, $5
+			printf "%-10s%-15s%-10s%-10s%-10s%s\n", $1, $2, $3, $4, $5, $6
 		}' 
 
 	echo "Virtual Machine Network:"
@@ -1768,6 +1820,9 @@ case "${1}" in
 	"mkimg")
 		do_mkimg "${2}" "$3" "$4"
 		;;
+	"convertimg")
+		do_convertimg "${2}" "$3" "$4"
+		;;
 	"rmimg")
 		do_rmimg "${2}" "$3" 
 		;;
@@ -1850,6 +1905,9 @@ case "${1}" in
 
 		__rb_args=( ${__ch_args[@]} )
 		do_chconf ${__rb_args[@]}
+		;;
+	"whoami")
+		echo $($uname -n)
 		;;
 	"ver")
 		do_ver

@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
 	string cmd;
 	PShell pshell;
 	pshell.set_pchar('|');
-	pshell.set_pcp("PIPED");
+	pshell.set_pcp("PIPED ");
 
 	if ((argc > 1) && (! strncmp(argv[1], "-c", 2)) && 
 					(argv[2] != (char *) NULL)) {
