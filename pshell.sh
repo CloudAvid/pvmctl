@@ -42,10 +42,13 @@ case "$cmd" in
 			dst_path="${args[2]}"
 		fi
 
-		echo $dst_path >> /tmp/out
 		# restrict scp location to vm storages
 		tx=$( read_config_file "$cf_VMStorages"| while read __i; do
 			__path=$(echo $__i | $cut -s -d ";" -f 3)
+			if [[ $(expr $dst_path : "\"$__path") -ne "0" ]]; then
+				echo "accept"
+				exit 0
+			fi
 			if [[ $(expr $dst_path : "$__path") -ne "0" ]]; then
 				echo "accept"
 				exit 0
@@ -66,6 +69,10 @@ case "$cmd" in
 		# restrict scp location to vm storages
 		tx=$( read_config_file "$cf_VMStorages"| while read __i; do
 			__path=$(echo $__i | $cut -s -d ";" -f 3)
+			if [[ $(expr $dst_path : "\"$__path") -ne "0" ]]; then
+				echo "accept"
+				exit 0
+			fi
 			if [[ $(expr $dst_path : "$__path") -ne "0" ]]; then
 				echo "accept"
 				exit 0

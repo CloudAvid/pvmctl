@@ -20,7 +20,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.6.0"
+scriptversion="2.6.1"
 
 # Functions used in the script
 load_defaults()
@@ -1440,7 +1440,7 @@ do_lst()
 {
 	echo "list of virtual machine templates:"
 	echo "----------------------------------"
-	for I in `$ls ${bidir}`; do
+	$ls ${bidir} | while read I; do
 		_conf=`expr match "$I" ".*.pvm"`
 		if [[ $_conf -eq 0 ]]; then
 			echo "$I"
@@ -1452,8 +1452,8 @@ do_lscd()
 {
 	echo "list of CD Images (ISO files):"
 	echo "------------------------------"
-	for I in `$ls ${isodir}`; do
-		echo "$I"
+	$ls ${isodir} | while read _i; do
+		echo "$_i"
 	done
 }
 
