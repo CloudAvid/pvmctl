@@ -49,6 +49,15 @@ if [[ ! -f $basedir/etc/vlans ]]; then
 	echo "#Vlan Numbers" > $basedir/etc/vlans
 fi
 
+if [[ ! -f $basedir/etc/vsws ]]; then
+	echo "# Format: name address type stp ..." > $basedir/etc/vsws
+	echo "# Type may be..> br:for simple bridge, brv: for bridge connected to vlans" >> $basedir/etc/vsws
+	echo "# br format: name address br stp ethX1 ethX2 ..." >> $basedir/etc/vsws
+	echo "# brv format: name address brv stp ethX1 vlanIDX1 ethX2 vlanIDX2 ..." >> $basedir/etc/vsws
+	echo "# address may be:  0.0.0.0 or x.x.x.x/y " >> $basedir/etc/vsws
+	echo "# stp may be:  on or off " >> $basedir/etc/vsws
+fi
+
 if [[ ! -f $basedir/etc/vm-services-log-file ]]; then
 	echo "# Place Of Log file ... for VM Services" > $basedir/etc/vm-services-log-file
 	echo "vms.log" >> $basedir/etc/vm-services-log-file
@@ -115,6 +124,11 @@ if [[ $? -ne 0 ]]; then
 	echo "02 0 * * * root /sbin/hwclock -w" >> /etc/crontab
 fi
 service crond restart >/dev/null 2>&1
+
+cat /etc/rc.local | grep "/pvm/Scripts/pvmctl loadvsws" > /dev/null
+if [[ $? -ne 0 ]]; then
+	echo "/pvm/Scripts/pvmctl loadvsws" >> /etc/rc.local
+fi
 
 echo "Installation completed ..."
 

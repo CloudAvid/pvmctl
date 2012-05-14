@@ -106,6 +106,9 @@ case "$cmd" in
 	"sed")
 		echo $sed ${args[@]} > $cmdfile
 		;;
+	"/PDNSoftCo./Scripts/pvmctl")
+		echo $sudo $pvmctl ${args[@]} > $cmdfile
+		;;
 	"/PDNSoftCo./Scripts/pcad")
 		echo $sudo $pcad ${args[@]} > $cmdfile
 		;;

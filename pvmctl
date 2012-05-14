@@ -1722,6 +1722,43 @@ do_rmtmpl()
 
 }
 
+do_savevsw()
+{
+	local vsw_cfg
+	vsw_cfg=($@)
+
+	$cat "$cf_virtual_switches" | grep "${vsw_cfg[0]} " >/dev/null 2>&1
+	if [[ $? -eq 0 ]]; then
+		echo_error "duplicated virtual switches ..."
+		exit 1
+	fi
+	if [[ "${#vsw_cfg[@]}" -lt 4 ]]; then
+		echo_error "virtual switch doesn't have enough parameters..!"
+		exit 1
+	fi
+
+	echo ${vsw_cfg[@]} >> "$cf_virtual_switches"
+}
+
+do_unsavevsw()
+{
+	local vsw
+	vsw="$1"
+	if [[ ! -z "$vsw" ]]; then
+		$sed -i -e "/^$vsw /d" "$cf_virtual_switches" >/dev/null 2>&1 
+	fi
+}
+
+do_loadvsw()
+{
+	$basedir/Scripts/make-pvm-vsws add "$1"
+}
+
+do_unloadvsw()
+{
+	$basedir/Scripts/make-pvm-vsws del "$1"
+}
+
 do_ver()
 {
 	echo "$scriptversion"
@@ -1778,6 +1815,8 @@ do_usage()
 	        ${scriptname} lst                                  - print out list of Virtual Templates 
 	        ${scriptname} lscd                                 - print out list of CD Images (ISO files)
 	        ${scriptname} lsid                                 - print out list of Virtual Storages.
+
+	        ${scriptname} loadvsws                             - load virtual switches and add them to local system.
 
 	        ${scriptname} help                                 - show this usage
 
@@ -1908,6 +1947,26 @@ case "${1}" in
 		;;
 	"whoami")
 		echo $($uname -n)
+		;;
+	"loadvsws")
+		$basedir/Scripts/make-pvm-vsws load
+		;;
+	"unloadvsws")
+		$basedir/Scripts/make-pvm-vsws unload
+		;;
+	"savevsw")
+		__savevsw_args=( $@ )
+		unset __savevsw_args[0]
+		do_savevsw ${__savevsw_args[@]} 
+		;;
+	"unsavevsw")
+		do_unsavevsw "$2"
+		;;
+	"loadvsw")
+		do_loadvsw "$2"
+		;;
+	"unloadvsw")
+		do_unloadvsw "$2"
 		;;
 	"ver")
 		do_ver

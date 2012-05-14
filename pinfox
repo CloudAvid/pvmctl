@@ -22,6 +22,7 @@ $scriptname generates PVM information in XML format.
                  $scriptname sids			- list of storages of virtual machines 
                  $scriptname tmpls			- list of templates
                  $scriptname isos			- list of iso files
+                 $scriptname vsws			- list of virtual switches
 	end-of-help
 }
 
@@ -44,6 +45,9 @@ case "$1" in
 		;;
 	"isos") 
 		pinfox_isos
+		;;
+	"vsws") 
+		pinfox_vsws
 		;;
 	"help")
 		pinfox_help
