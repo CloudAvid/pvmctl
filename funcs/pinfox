@@ -303,11 +303,13 @@ pinfox_vsws()
 		infox+="<name>${args[0]}</name>"
 		infox+="<address>${args[1]}</address>"
 		infox+="<type>${args[2]}</type>"
+		infox+="<stp>${args[3]}</stp>"
 		
 		typ=${args[2]}
 		unset args[0]
 		unset args[1]
 		unset args[2]
+		unset args[3]
 
 		case $typ in
 		"br")
@@ -325,3 +327,19 @@ pinfox_vsws()
 	infox+="</pvm_vsws>"
 	echo $infox
 }
+
+pinfox_eths()
+{
+	local i
+	local infox
+	infox="<pvm_eths ver=\"$xver\">"
+	infox+=$($cat "/etc/udev/rules.d/70-persistent-net.rules" \
+		| $grep SUBSYSTEM | $cut -d " " -f 7 \
+		| $sed -e "s/NAME=\"//" -e "s/\"//" | while read i; do
+
+		echo -n "<eth>$i</eth>"
+	done)
+	infox+="</pvm_eths>"
+	echo $infox
+}
+

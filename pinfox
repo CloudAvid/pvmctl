@@ -49,6 +49,9 @@ case "$1" in
 	"vsws") 
 		pinfox_vsws
 		;;
+	"eths")
+		pinfox_eths
+		;;
 	"help")
 		pinfox_help
 		;;
