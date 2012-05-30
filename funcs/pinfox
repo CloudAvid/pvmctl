@@ -4,6 +4,35 @@
 # XML Format version
 xver="0.1"
 
+# Generates Nodes List in the cluster
+pinfox_cluster()
+{
+	local infox
+
+	infox="<pvm_cluster ver=\"$xver\">"
+	infox+="<cluster_name>$($pcad status | $sed -n '1p' | $cut -d ' ' -f 4)</cluster_name>"
+	infox+="<cluster_status>$($pcad status | $sed -n '2p' | $cut -d ' ' -f 3)</cluster_status>"
+	infox+="<cluster_pcm_ver>$($pcad ver)</cluster_pcm_ver>"
+	infox+="<cluster_plm_ver>$($pvmctl ver)</cluster_plm_ver>"
+	infox+="<cluster_nodes>"
+	infox+=$($pcad status | $sed -n '/Member Name/,/Service Name/p' \
+			| $sed '1,2d' | $sed '$d' | $sed '$d' | while read i; do
+			infox="<node>"
+			infox+="<name>$(echo $i | cut -d ' ' -f 1 )</name>"
+			echo $i | $grep "Online" >/dev/null 2>&1
+			if [[ $? -eq 0 ]]; then
+				infox+="<status>online</status>"
+			else
+				infox+="<status>offline</status>"
+			fi
+			infox+="</node>"
+			echo $infox
+		done )
+	infox+="</cluster_nodes>"
+	infox+="</pvm_cluster>"
+	echo $infox
+}
+
 # Generate VM Information list
 # usage: _pinfox_vminfo host
 _pinfox_vminfo()

@@ -23,6 +23,7 @@ $scriptname generates PVM information in XML format.
                  $scriptname tmpls			- list of templates
                  $scriptname isos			- list of iso files
                  $scriptname vsws			- list of virtual switches
+                 $scriptname cluster			- print out cluster information
 	end-of-help
 }
 
@@ -51,6 +52,9 @@ case "$1" in
 		;;
 	"eths")
 		pinfox_eths
+		;;
+	"cluster")
+		pinfox_cluster
 		;;
 	"help")
 		pinfox_help
