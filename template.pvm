@@ -30,6 +30,9 @@ noacpi=""
 # Stable values are 1-4.
 # cpus must be set to 1 if noacpi is set.
 cpus="1"
+cpus_sockets="" 	# total number of sockets.
+cpus_cores=""		# number of cores per socket.
+cpus_threads=""		# number of threads per core.
 
 # Which mouse device to use
 # Values:  mouse, tablet

@@ -54,3 +54,21 @@ load_configfile()
 	fi
 }
 
+# exec vm-monitoring command.
+do_exec_vm_mon_cmd()
+{
+	local args
+	local host
+
+	args=( $@ )
+	if [[ ${#args[@]} -lt 2 ]]; then
+		echo_error "usage: exec host args"
+		return 1
+	fi
+	host="${args[0]}"
+	unset args[0]
+
+	echo "${args[@]}" | $socat - UNIX-CONNECT:$mondir/$host
+	return $?
+}
+

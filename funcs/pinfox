@@ -19,6 +19,7 @@ pinfox_cluster()
 			| $sed '1,2d' | $sed '$d' | $sed '$d' | while read i; do
 			infox="<node>"
 			infox+="<name>$(echo $i | cut -d ' ' -f 1 )</name>"
+			infox+="<id>$(echo $i | cut -d ' ' -f 2 )</id>"
 			echo $i | $grep "Online" >/dev/null 2>&1
 			if [[ $? -eq 0 ]]; then
 				infox+="<status>online</status>"
@@ -50,7 +51,13 @@ _pinfox_vminfo()
 	infox+="<des>$des</des><ip>$ip</ip>"
 	infox+="<vsys>"
 	infox+="<nic>$nic</nic>"
-	infox+="<ncpu>$cpus</ncpu><mem>$mem</mem>"
+	infox+="<cpu>"
+	infox+="<ncpu>$cpus</ncpu>"
+	infox+="<sockets>$cpus_sockets</sockets>"
+	infox+="<cores>$cpus_cores</cores>"
+	infox+="<threads>$cpus_threads</threads>"
+	infox+="</cpu>"
+	infox+="<mem>$mem</mem>"
 	infox+="<bios><boot>$boot</boot></bios>"
 	infox+="<disks>"
 

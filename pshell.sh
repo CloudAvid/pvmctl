@@ -25,6 +25,9 @@ case "$cmd" in
 "pinfox")
 	echo $sudo $pinfox ${args[@]} > $cmdfile
 	;;
+"pvmon")
+	echo 'echo "<cmd><sid>0</sid><cid>6</cid></cmd>" | $sudo $socat - UNIX-CONNECT:/var/run/pcmd.sock; echo' > $cmdfile
+	;;
 "echo")
 	if [[ "${args[1]}" = "y" ]]; then
 		echo "echo y" > $cmdfile

@@ -97,7 +97,7 @@ useradd -s /bin/pshell -p pvmuser@pvm pvm
 chmod +w /etc/sudoers
 cat "/etc/sudoers" | grep "pvm" > /dev/null
 if [[ $? -ne 0 ]]; then
-	echo "pvm     ALL= NOPASSWD: /pvm/Scripts/pvmctl, /pvm/Scripts/pcad, /pvm/Scripts/pinfox, /usr/bin/scp" >> /etc/sudoers
+	echo "pvm     ALL= NOPASSWD: /pvm/Scripts/pvmctl, /pvm/Scripts/pcad, /pvm/Scripts/pinfox, /usr/bin/scp,  /root/pvm/bin/socat" >> /etc/sudoers
 fi
 # change sudo settings to work without standard input
 sed -i -e "/Defaults    requiretty/d" /etc/sudoers

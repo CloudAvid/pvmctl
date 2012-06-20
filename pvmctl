@@ -362,6 +362,17 @@ do_start()
 		confcpus="$maxcpus"
 	     fi
 	fi
+	if [[ -z $cpus ]]; then
+		if [[ -z $cpus_sockets || -z $cpus_cores || -z $cpus_threads ]]; then
+			echo_error "Can't calculate number of cpus !"
+			exit 1
+		fi
+		if [[ $(( cpus_sockets * cpus_cores * cpus_threads)) -gt $maxcpus ]]; then
+			echo_error "Number of cpus is more than number of host-cpus !"
+			exit 1
+		fi
+		confcpus="sockets=$cpus_sockets,cores=$cpus_cores,threads=$cpus_threads"
+	fi
 		
 	confmem="$mem"
 	# Check amount of RAM to be assigned to the VM
@@ -466,6 +477,56 @@ do_stop()
 	fi
 
 	echo "VM for ${1} has stopped."
+}
+
+do_pause()
+{
+	if [[ -z "$1" ]]; then
+		echo_usage "pause host";
+		exit 1;
+	fi
+	check_host "$1"
+	$pvmctl "status" "$1" > /dev/null
+	if [[ $? -ne 0 ]]; then
+		echo_error "$1 is off !"
+		exit 1
+	fi
+
+	do_exec_vm_mon_cmd "$1" "stop" >/dev/null 2>&1
+	exit $?
+}
+
+do_resume()
+{
+	if [[ -z "$1" ]]; then
+		echo_usage "resume host";
+		exit 1;
+	fi
+	check_host "$1"
+	$pvmctl "status" "$1" > /dev/null
+	if [[ $? -ne 0 ]]; then
+		echo_error "$1 is off !"
+		exit 1
+	fi
+
+	do_exec_vm_mon_cmd "$1" "c" >/dev/null 2>&1
+	exit $?
+}
+
+do_vmstatus()
+{
+	if [[ -z "$1" ]]; then
+		echo_usage "vmstatus host";
+		exit 1;
+	fi
+	check_host "$1"
+	$pvmctl "status" "$1" > /dev/null
+	if [[ $? -ne 0 ]]; then
+		echo "off"
+		exit 0
+	fi
+
+	do_exec_vm_mon_cmd "$1" "info status" | $sed -e "1,2d" -e '$d' | $cut -d ' ' -f 3
 }
 
 do_shutdown()
@@ -848,6 +909,9 @@ _rebuild_conf()
 	echo "mem=\"$mem\"" >> "$confdir/${clist[0]}.pvm"
 	echo "noacpi=\"$noacpi\"" >> "$confdir/${clist[0]}.pvm"
 	echo "cpus=\"$cpus\"" >> "$confdir/${clist[0]}.pvm"
+	echo "cpus_sockets=\"$cpus_sockets\"" >> "$confdir/${clist[0]}.pvm"
+	echo "cpus_cores=\"$cpus_cores\"" >> "$confdir/${clist[0]}.pvm"
+	echo "cpus_threads=\"$cpus_threads\"" >> "$confdir/${clist[0]}.pvm"
 	echo "mouse=\"$mouse\"" >> "$confdir/${clist[0]}.pvm"
 	echo "nic=\"$nic\"" >> "$confdir/${clist[0]}.pvm"
 	echo "boot=\"$boot\"" >> "$confdir/${clist[0]}.pvm"
@@ -1840,6 +1904,15 @@ case "${1}" in
 		;;
 	"status")
 		do_status "${2}"
+		;;
+	"pause")
+		do_pause "${2}"
+		;;
+	"resume")
+		do_resume "${2}"
+		;;
+	"vmstatus")
+		do_vmstatus "${2}"
 		;;
 	"create")
 		do_create "${2}" "${3}" "$4"
