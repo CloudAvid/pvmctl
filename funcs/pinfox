@@ -379,3 +379,23 @@ pinfox_eths()
 	echo $infox
 }
 
+pinfox_usbs()
+{
+	local i
+	local infox
+	infox="<pvm_usbs ver=\"$xver\">"
+	infox+=$($lsusb | $sed -e "s/://" | while read i; do
+		x=($i)
+		infox="<usb>"
+		infox+="<id>${x[1]}.${x[3]}</id>"
+		unset x[0]
+		unset x[1]
+		unset x[2]
+		unset x[3]
+		infox+="<des>${x[@]}</des></usb>"
+		echo -n $infox
+	done)
+	infox+="</pvm_usbs>"
+	echo $infox
+}
+

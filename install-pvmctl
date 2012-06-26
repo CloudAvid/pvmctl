@@ -92,13 +92,15 @@ for i in $(ls /$basedir/etc/pvm); do
 	fi
 done
 
+if [[ $yes = "y" ]]; then
+	userdel -r pvm 2>/dev/null
+fi
 useradd -s /bin/pshell -p pvmuser@pvm pvm
+
 # changing sudo 
 chmod +w /etc/sudoers
-cat "/etc/sudoers" | grep "pvm" > /dev/null
-if [[ $? -ne 0 ]]; then
-	echo "pvm     ALL= NOPASSWD: /pvm/Scripts/pvmctl, /pvm/Scripts/pcad, /pvm/Scripts/pinfox, /usr/bin/scp,  /root/pvm/bin/socat" >> /etc/sudoers
-fi
+sed -e "/^pvm/d" /etc/sudoers
+echo "pvm     ALL= NOPASSWD: /pvm/Scripts/pvmctl, /pvm/Scripts/pcad, /pvm/Scripts/pinfox, /usr/bin/scp,  /root/pvm/bin/socat" >> /etc/sudoers
 # change sudo settings to work without standard input
 sed -i -e "/Defaults    requiretty/d" /etc/sudoers
 chmod -w /etc/sudoers

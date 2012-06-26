@@ -53,6 +53,9 @@ case "$1" in
 	"eths")
 		pinfox_eths
 		;;
+	"usbs")
+		pinfox_usbs
+		;;
 	"cluster")
 		pinfox_cluster
 		;;
