@@ -20,7 +20,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.10.0"
+scriptversion="2.10.1"
 
 # Functions used in the script
 load_defaults()
@@ -980,6 +980,7 @@ do_chconf()
 	# unset arrays
 	unset disk
 	unset vlan
+	unset host_usb
 
 	_rebuild_conf ${rb_args[@]}
 }
