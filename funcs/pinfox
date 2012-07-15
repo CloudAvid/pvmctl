@@ -387,7 +387,7 @@ pinfox_usbs()
 	infox+=$($lsusb | $sed -e "s/://" | while read i; do
 		x=($i)
 		infox="<usb>"
-		infox+="<id>${x[1]}.${x[3]}</id>"
+		infox+="<id>$((10#${x[1]})).$((10#${x[3]}))</id>"
 		unset x[0]
 		unset x[1]
 		unset x[2]
