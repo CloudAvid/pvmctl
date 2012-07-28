@@ -20,7 +20,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.10.2"
+scriptversion="2.11.0"
 
 # Functions used in the script
 load_defaults()
@@ -87,7 +87,7 @@ do_start()
 	${0} status ${1} > /dev/null
 	if [[ $? -eq "0" ]]; then
 		# If he is running, all is ok, just exit with 0.
-		echo "Host is running right now ..."
+		echo_result "Host is running right now ..."
 		exit 0
 	fi
 
@@ -158,7 +158,7 @@ do_start()
 
 		#  Check if disk path is Absolute? if not, 
 		#+ prepend defined pathes to disk.
-		if [[ $(expr ${disk} : '/') -eq 0 ]]; then
+		if [[ $(expr "${disk}" : '/') -eq 0 ]]; then
 			case "$media" in
 			disk) 
 				disk="${vmstrg}/${disk}" 
@@ -283,7 +283,7 @@ do_start()
 		eth_script=""
 		eth_script_cmd=""
 		if [[ ! -z "${vlan[i]}" ]]; then
-			if [[ $(expr ${vlan[i]} : '/') -eq 0 ]]; then
+			if [[ $(expr "${vlan[i]}" : '/') -eq 0 ]]; then
 				$brctl showmacs "${vlan[i]}" >/dev/null 2>&1
 				if [[ "$?" -ne "0" ]]; then
 					echo_error "bad virtual switch ${vlan[i]} !"
@@ -358,7 +358,7 @@ do_start()
 	if [[ "$cpus" -lt "$mincpus" ]]; then
 		confcpus="$mincpus"
 	else if [[ "$cpus" -gt "$maxcpus" ]]; then
-		echo "Warinig: Number of cpus is greater than $maxcpus. Setting cpus to $maxcpus."
+		echo_warning "Number of cpus is greater than $maxcpus. Setting cpus to $maxcpus."
 		confcpus="$maxcpus"
 	     fi
 	fi
@@ -379,7 +379,7 @@ do_start()
 	if [[ $mem -lt $minmem ]]; then
 		confmem=$minmem
 	else if [[ $mem -gt $maxmem ]]; then
-		echo "Warning: Virtual RAM is greater then $maxmem.  Setting virtual RAM to $maxmem."
+		echo_warning "Virtual RAM is greater then $maxmem.  Setting virtual RAM to $maxmem."
 		confmem="$maxmem"
 	     fi
 	fi
@@ -457,26 +457,26 @@ do_stop()
 		exit 0
 	fi
 
-	echo "Attempting to stop VM for ${1} ..."
+	echo_info "Attempting to stop VM for ${1} ..."
 	if [ -r ${piddir}/${1}.pid ]; then
 		${kill} -TERM $( ${cat} ${piddir}/${1}.pid )
 		${sleep} ${sleeptime}
 
 		if [ -d /proc/$( ${cat} ${piddir}/${1}.pid ) ]; then
-			echo "Warning: Something is wrong ... couldn't stop the VM."
-			echo "         Try to kill him."
+			echo_warning "Something is wrong ... couldn't stop the VM."
+			echo_warning "         Try to kill him."
 			${pkill} -KILL -f -- "-name ${1}"
 			${sleep} ${sleeptime}
 		fi
 
 		${rm} ${piddir}/${1}.pid >/dev/null 2>&1
 	else
-		echo "Warning: PID file missing or not readable. Try to kill him."
+		echo_warning "PID file missing or not readable. Try to kill him."
 		${pkill} -KILL -f -- "-name ${1}"
 		${sleep} ${sleeptime}
 	fi
 
-	echo "VM for ${1} has stopped."
+	echo_result "VM for ${1} has stopped."
 }
 
 do_pause()
@@ -522,11 +522,11 @@ do_vmstatus()
 	check_host "$1"
 	$pvmctl "status" "$1" > /dev/null
 	if [[ $? -ne 0 ]]; then
-		echo "off"
+		echo_result "off"
 		exit 0
 	fi
 
-	do_exec_vm_mon_cmd "$1" "info status" | $sed -e "1,2d" -e '$d' | $cut -d ' ' -f 3
+	echo_result $(do_exec_vm_mon_cmd "$1" "info status" | $sed -e "1,2d" -e '$d' | $cut -d ' ' -f 3)
 }
 
 do_shutdown()
@@ -538,8 +538,9 @@ do_shutdown()
 	check_host ${1}
 	HOST=$1
 
-	echo "system_powerdown" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null
-	echo "Shutdown signal sent to ${1} ... "
+	#echo "system_powerdown" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null
+	do_exec_vm_mon_cmd "$1" "system_powerdown" > /dev/null
+	echo_result "Shutdown signal sent to ${1} ... "
 }
 
 do_reset()
@@ -551,28 +552,29 @@ do_reset()
 	check_host ${1}
 	HOST=$1
 
-	echo "system_reset" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null
-	echo "reset signal sent to ${1} ... "
+	#echo "system_reset" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null
+	do_exec_vm_mon_cmd "$1" "system_reset" > /dev/null
+	echo_result "reset signal sent to ${1} ... "
 }
 
 do_status()
 {
 	if [ -z ${1} ]; then
 		# Called with blank argument, show just the names of the running VMs
-		echo "The following VMs are running:"
+		echo_result "The following VMs are running:"
 		${pgrep} -lf qemu-kvm | ${grep} -v ${scriptname} | ${awk} '{ print $4 }'
 	elif [ ${1} = "kvm" ]; then
 		# Called with "kvm" argument, show full details of all kvm processes
-		echo "The following VMs are running:"
+		echo_result "The following VMs are running:"
 		${pgrep} -lf qemu | ${grep} -v ${scriptname}
 	elif [ -e ${confdir}/${1}.pvm ]; then
 		# Called with a VM host name, show details for just that kvm process
 		${pgrep} -lf -- "-name ${1} " | ${grep} -v ${scriptname} > /dev/null
 		if [ $? -eq 1 ]; then
-			echo "VM for ${1} is not running"
+			echo_result "VM for ${1} is not running"
 			exit 1
 		else
-			echo "VM for ${1} is running"
+			echo_result "VM for ${1} is running"
 			exit 0
 		fi
 	else
@@ -588,8 +590,8 @@ check_off()
 {
 	${0} status ${1} > /dev/null
 	if [[ $? -eq "0" ]]; then
-		echo "your host($1) is running ..."
-		echo "shutdown the host before any work ..."
+		echo_result "your host($1) is running ..."
+		echo_result "shutdown the host before any work ..."
 		exit 1
 	fi
 }
@@ -662,9 +664,9 @@ do_mkimg()
 			;;
 	esac
 	if [[ $? -eq 0 ]]; then
-		echo "Image \"$2\" created. "
+		echo_result "Image \"$2\" created. "
 	else
-		echo_error "Can't create new disk: $( $perror $? )"
+		echo_error "Can't create new disk, $( $perror $? )"
 		exit 1
 	fi
 }
@@ -698,7 +700,7 @@ do_convertimg()
 			;;
 	esac
 	if [[ $? -eq 0 ]]; then
-		echo "Image \"$3\" created. "
+		echo_result "Image \"$3\" created. "
 	else
 		echo_error "Can't create new disk: $( $perror $? )"
 		exit 1
@@ -716,7 +718,7 @@ _do_rmimg()
 		case $strgtype in
 			$STRG_FS)
 				# "*" to remove all of rebases.
-				$rm -f "$vmstrg/$2*" > /dev/null
+				$rm -f "$vmstrg/$2" > /dev/null
 				;;
 			$STRG_VG)
 				$lvremove -A y -f "$vmstrg/$2" > /dev/null
@@ -727,7 +729,7 @@ _do_rmimg()
 		esac
 	fi
 	if [[ $? -eq 0 ]]; then
-		echo "Image \"$2\" removed. "
+		echo_info "Image \"$2\" removed. "
 	else
 		echo_error "Can't remove \"$2\": $( $perror $? )"
 		exit 1
@@ -740,14 +742,18 @@ do_rmimg()
 		echo_usage "rmimg host image_name";
 		exit 1;
 	fi
-	check_host ${1}
+	check_host "$1"
 	check_off "$1"
 	load_configfile "${1}"
 	_is_disk_owner "$1" "$2"
-	echo -n "removing image \"$2\": Are you sure (y/*)? "
-	read yesno
-	if [[ "$yesno" != "y" ]]; then
-		exit 0;
+	#echo -n "removing image \"$2\": Are you sure (y/*)? "
+	#read yesno
+	#if [[ "$yesno" != "y" ]]; then
+	#	exit 0;
+	#fi
+	are_you_sure "removing image \"$2\":"
+	if [[ $? -eq "0" ]]; then
+		exit 1;
 	fi
 	_do_rmimg "$1" "$2"
 }
@@ -776,10 +782,14 @@ do_rnimg()
 		echo_error "New image \"$3\" exists right now !"
 		exit 1
 	fi
-	echo -n "renaming image \"$2\": Are you sure (y/*)? "
-	read yesno
-	if [[ "$yesno" != "y" ]]; then
-		exit 0;
+	#echo -n "renaming image \"$2\": Are you sure (y/*)? "
+	#read yesno
+	#if [[ "$yesno" != "y" ]]; then
+	#	exit 0;
+	#fi
+	are_you_sure "renaming image \"$2\" to \"$3\":"
+	if [[ $? -eq "0" ]]; then
+		exit 1;
 	fi
 
 	case $strgtype in
@@ -794,9 +804,9 @@ do_rnimg()
 			;;
 	esac
 	if [[ $? -eq 0 ]]; then
-		echo "Image \"$2\" renamed to \"$3\". "
+		echo_result "Image \"$2\" renamed to \"$3\". "
 	else
-		echo "Can't rename \"$2\": $( $perror $? )"
+		echo_error "Can't rename \"$2\": $( $perror $? )"
 		exit 1
 	fi
 }
@@ -885,12 +895,12 @@ verify_eths()
 _rebuild_conf()
 {
 	temp_conf="/tmp/rconf_$RANDOM"
-	clist=( $@ )
+	clist=(${@})
 	clist_no=${#clist[@]}
 
 	echo > $temp_conf
-	for ((i=1; i<$clist_no; ++i)); do
-		echo ${clist[i]} >> "$temp_conf"
+	for __var in "$@"; do
+		echo ${__var//' '/'\ '} >> "$temp_conf"
 	done
 
 	. $temp_conf
@@ -973,7 +983,7 @@ do_chconf()
 		exit 1
 	fi
 
-	rb_args=( $@ )
+	rb_args=(${@})
 
 	# load configs
 	load_configfile "${rb_args[0]}"
@@ -982,10 +992,10 @@ do_chconf()
 	unset vlan
 	unset host_usb
 
-	_rebuild_conf ${rb_args[@]}
+	_rebuild_conf "$@"
 }
 
-# Modifing some host parameters base of user request
+# Modifing some host parameters base on user request
 _do_modconf()
 {
 	if [[ -z $1 ]]; then
@@ -993,7 +1003,7 @@ _do_modconf()
 		exit 1
 	fi
 
-	rb_args=( $@ )
+	rb_args=(${@})
 	# load configs
 	load_configfile "${rb_args[0]}"
 
@@ -1010,7 +1020,7 @@ do_genid()
 		_id=${_id#\"}
 		_out="$_out$_id\n"
 	done
-	echo $(( $(echo -e "$_out" | sort -nr | $sed -n -e "1p") + 1 ))
+	echo_result $(( $(echo -e "$_out" | sort -nr | $sed -n -e "1p") + 1 ))
 }
 
 # Create new virtual machine.
@@ -1023,7 +1033,7 @@ do_new()
 	fi
 	if [[ -e ${confdir}/${1}.pvm ]]; then
 		echo_error "Your host exists right now ..."
-		exit 0;
+		exit 1;
 	fi
 	_verify_vmstrg "$1" "$2"
 	if [ -r "$template" ]; then
@@ -1034,7 +1044,7 @@ do_new()
 				#$sed -i -e "s/^sid=\".*\"/sid=\"$2\"/" "${confdir}/${1}.pvm" 	
 			#fi
 			_do_modconf "$1" "id=\"$( do_genid )\"" "sid=$2"
-			echo "New virtual machine ($1) has been created ..."
+			echo_result "New virtual machine ($1) has been created ..."
 		else
 			echo_error "You don't have write permission for ${confdir}"
 			exit 1
@@ -1094,11 +1104,11 @@ do_clone()
 	check_host "$1"
 	load_configfile "$1"
 	if [[ $(check_off "$1" >/dev/null ) -eq 1 ]]; then
-		echo "$1 is run ..."
+		echo_info "$1 is run ..."
 		are_you_sure "Cloning from running machine,"
 		if [[ "$?" -eq 0 ]]; then
-			echo "Cloning canceled ..."
-			exit 0
+			echo_result "Cloning canceled ..."
+			exit 1
 		fi
 	fi
 	if [[ -e "$confdir/$2.pvm" ]]; then
@@ -1108,13 +1118,17 @@ do_clone()
 
 	old_vmstrg="$vmstrg"
 	c_sid=$3
-	if [[ -z "$3" ]]; then c_sid=$sid; fi
+	if [[ -z "$3" ]]; then 
+		c_sid=$sid; 
+	else
+		isvalid_vmstrg "$3"
+	fi
 
-	echo "Generating config file ..."
+	echo_info "Generating config file ..."
 	do_new "$2" "$c_sid"
 
 	load_configfile "$2"
-	echo "Creating disks, please wait ..."
+	echo_info "Creating disks, please wait ..."
 	case $strgtype in
 		$STRG_FS)
 			$mkdir -p "$vmstrg"
@@ -1133,9 +1147,9 @@ do_clone()
 			continue
 		fi
 		np_vdisk=$(( ++np_vdisk ))
-		echo "Processing Disk #$i; ${disk[i]} ..."
+		echo_info "Processing Disk #$i; ${disk[i]} ..."
 		# if disk path, is a full path, we leave him unchanged
-		if [[ $(expr ${disk[i]} : '/') -eq 0 ]]; then
+		if [[ $(expr "${disk[i]}" : '/') -eq 0 ]]; then
 			if [[ ${media[i]} = "disk" ]]; then
 				if [[ $strgtype = $STRG_VG ]]; then
 					disk_size=$( $kvmimg info "$old_vmstrg/${disk[i]}" | grep "virtual size: " | cut -d ' ' -f 3 )
@@ -1160,7 +1174,7 @@ do_clone()
 	done
 
 	do_chconf "$2" $__disk_str $__eth_str
-	echo "clone(${2}) created ... "
+	echo_result "clone(${2}) created ... "
 }
 
 do_edit()
@@ -1200,13 +1214,13 @@ do_rename()
 		exit 1
 	fi
 
-	echo "Generating config file ..."
+	echo_info "Generating config file ..."
 	$mv "$confdir/${1}.pvm" "$confdir/${2}.pvm" 
 	if [[ $strgtype = "$STRG_FS" && -d "$vmstrg" ]]; then
 		$mv $vmstrg "${vmstrg/%$1/$2}"
 	fi
 
-	echo "${1} renamed to ${2}"
+	echo_result "${1} renamed to ${2}"
 }
 
 do_rmvm()
@@ -1219,10 +1233,14 @@ do_rmvm()
 	check_off ${1}
 	load_configfile "${1}"
 
-	echo -n "remove ${1}: Are you sure (y/*)? "
-	read yesno
-	if [[ $yesno != "y" ]]; then
-		exit 0
+	#echo -n "remove ${1}: Are you sure (y/*)? "
+	#read yesno
+	#if [[ $yesno != "y" ]]; then
+	#	exit 0
+	#fi
+	are_you_sure "remove \"$1\":"
+	if [[ $? -eq "0" ]]; then
+		exit 1
 	fi
 
 	no_vdisk=${#disk[@]}
@@ -1234,7 +1252,7 @@ do_rmvm()
 		fi
 		np_vdisk=$(( ++np_vdisk ))
 		# if disk path, is full path, we leave him unchanged
-		if [[ $(expr ${disk[i]} : '/') -eq 0 ]]; then
+		if [[ $(expr "${disk[i]}" : '/') -eq 0 ]]; then
 			if [[ ${media[i]} = "disk" ]]; then
 				_do_rmimg "$1" ${disk[i]}
 			fi
@@ -1256,7 +1274,7 @@ do_mvvm()
 	fi
 	are_you_sure "Move $1 to storage[$2]:"
 	if [[ $? -eq 0 ]]; then
-		exit 0
+		exit 1
 	fi
 	check_host "$1"
 	check_off "$1"
@@ -1265,18 +1283,19 @@ do_mvvm()
 	if [[ $2 = $sid ]]; then
 		echo_error "new sid(\"$2\") is equal to current sid !"
 		exit 1
+	else
+		isvalid_vmstrg "$2"
 	fi
 	__new_name="$RANDOM$1"
-	echo "Creating clone \"$__new_name\" ..."
+	echo_info "Creating clone \"$__new_name\" ..."
 	DO_CLONE_FIX_MACS=1 # fixing mac addresses
 	do_clone "$1" "$__new_name" "$2"
 	unset DO_CLONE_FIX_MACS
-	echo "Removing old VM ..."
+	echo_info "Removing old VM ..."
 	do_rmvm "$1"
-	echo "Renaming new VM ..."
+	echo_info "Renaming new VM ..."
 	do_rename "$__new_name" "$1"
 }
-
 
 # changing running-host CR-Rom 
 # it must be used for running virtual machines.
@@ -1316,7 +1335,8 @@ do_chcdrom()
 	esac
 
 	if [[ -z "$3" ]]; then
-		echo "eject ide1-cd$cdid" | $socat - UNIX-CONNECT:"$mondir/$1" >/dev/null 2>&1
+		#echo "eject ide1-cd$cdid" | $socat - UNIX-CONNECT:"$mondir/$1" >/dev/null 2>&1
+		do_exec_vm_mon_cmd $1 "eject ide1-cd$cdid" >/dev/null 2>&1
 	else
 		_cpath="$3"
 		# if file path isn't a full name, prepend "isodir" path.
@@ -1326,13 +1346,14 @@ do_chcdrom()
 		"hostcd2") _cpath="/dev/sr1"
 			;;
 		*)
-			if [[ $(expr $_cpath : '/') -eq 0 ]]; then
+			if [[ $(expr "$_cpath" : '/') -eq 0 ]]; then
 				_cpath="$isodir/$_cpath"
 			fi
 			;;
 		esac
 		if [[ -e "$_cpath" ]]; then
-			echo "change ide1-cd$cdid $_cpath" | $socat - UNIX-CONNECT:"$mondir/$1" >/dev/null 2>&1
+			#echo "change ide1-cd$cdid $_cpath" | $socat - UNIX-CONNECT:"$mondir/$1" >/dev/null 2>&1
+			do_exec_vm_mon_cmd $1 "change ide1-cd$cdid $_cpath" >/dev/null 2>&1
 		else
 			echo_error "Bad iso/cd file !"
 			exit 1
@@ -1376,22 +1397,23 @@ do_snaps()
 		echo_error "Host is OFF, for snapshot activities must be ON."
 		exit 0
 	fi
-	__snaps=$(echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST)
+	#__snaps=$(echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST)
+	__snaps=$(do_exec_vm_mon_cmd $HOST "info snapshots")
 	if [[ -z "$__snaps" ]]; then
 		echo_error "Host isBUSY !!!"
 		exit 1
 	fi
-	echo "${1} snapshots:"
-	echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST | $sed -e "1,2d" -e "\$d" 
+	echo_result "${1} snapshots:"
+	#echo "info snapshots" | $socat - UNIX-CONNECT:$mondir/$HOST | $sed -e "1,2d" -e "\$d" 
+	do_exec_vm_mon_cmd $HOST "info snapshots" | $sed -e "1,2d" -e "\$d"
 }
 
 _wait_for_snaps_activities()
 {
 	for((;;)); do
-		echo -n "."
+		echo_info  "."
 		$pvmctl "snaps" "$1" >/dev/null 2>&1
 		if [[ $? -eq 0 ]]; then
-			echo 
 			return 0
 		fi
 		$sleep 30
@@ -1413,11 +1435,12 @@ do_mksnap()
 	fi
 	HOST=$1
 
-	echo "Make an snapshot for $1"
-	echo -n "Please wait ..."
-	echo "savevm $2" |  $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
+	echo_info "Make an snapshot for $1"
+	echo_info "Please wait ..."
+	#echo "savevm $2" |  $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
+	do_exec_vm_mon_cmd $1 "savevm $2"  > /dev/null
 	_wait_for_snaps_activities "$1"
-	echo "The Snapshot is created"
+	echo_result "The Snapshot been created"
 }
 
 do_ldsnap()
@@ -1435,10 +1458,12 @@ do_ldsnap()
 	fi
 	HOST=$1
 
-	echo "Load snapshot for $1 with tag|id=$2"
-	echo -n "Please wait ..."
-	echo "loadvm $2" | $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
+	echo_info "Load snapshot for $1 with tag|id=$2"
+	echo_info "Please wait ..."
+	#echo "loadvm $2" | $socat - UNIX-CONNECT:$mondir/$HOST  > /dev/null 
+	do_exec_vm_mon_cmd $HOST "loadvm $2" > /dev/null 
 	_wait_for_snaps_activities "$1"
+	echo_result "The Snapshot been loaded"
 }
 
 do_rmsnap()
@@ -1456,10 +1481,12 @@ do_rmsnap()
 	fi
 	HOST="$1"
 
-	echo "delete snapshot from $1 with tag|id=$2"
-	echo -n "please wait ..."
-	echo "delvm $2" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null 
+	echo_info "delete snapshot from $1 with tag|id=$2"
+	echo_info "please wait ..."
+	#echo "delvm $2" | $socat - UNIX-CONNECT:$mondir/$HOST > /dev/null 
+	do_exec_vm_mon_cmd $HOST "delvm $2" > /dev/null 
 	_wait_for_snaps_activities "$1"
+	echo_result "The Snapshot been removed"
 }
 
 do_mon()
@@ -1476,10 +1503,10 @@ do_mon()
 
 do_ls()
 {
-	echo "list of installed hosts:"
-	echo "------------------------"
+	echo_result "list of installed hosts:"
+	echo_result "------------------------"
 	for I in `ls ${confdir}`; do
-		echo "${I%.pvm}"
+		echo_result "${I%.pvm}"
 	done
 }
 
@@ -1503,22 +1530,22 @@ do_ls_ids()
 
 do_lst()
 {
-	echo "list of virtual machine templates:"
-	echo "----------------------------------"
+	echo_result "list of virtual machine templates:"
+	echo_result "----------------------------------"
 	$ls ${bidir} | while read I; do
-		_conf=`expr match "$I" ".*.pvm"`
+		_conf=$(expr match "$I" ".*.pvm")
 		if [[ $_conf -eq 0 ]]; then
-			echo "$I"
+			echo_result "$I"
 		fi
 	done
 }
 
 do_lscd()
 {
-	echo "list of CD Images (ISO files):"
-	echo "------------------------------"
+	echo_result "list of CD Images (ISO files):"
+	echo_result "------------------------------"
 	$ls ${isodir} | while read _i; do
-		echo "$_i"
+		echo_result "$_i"
 	done
 }
 
@@ -1655,21 +1682,25 @@ do_mkiso()
 	fi
 
 	_iso="$1"
-	if [[ $(expr $1 : '/') -eq "0" ]]; then
+	if [[ $(expr "$1" : '/') -eq "0" ]]; then
 		_iso="$isodir/$1"
 	fi
 
 	if [[ -f "$_iso" ]]; then
-		echo -n "Target File exist ... Replace it (y/*)? "
-		read yesno
+		#echo -n "Target File exist ... Replace it (y/*)? "
+		are_you_sure "Target File exist, Replace it: "
+		#read yesno
 
-		case $yesno in
-			[yY]*)
-				;;
-			*)
-				exit 0
-				;;
-		esac
+		#case $yesno in
+		#	[yY]*)
+		#		;;
+		#	*)
+		#		exit 0
+		#		;;
+		#esac
+		if [[ $? -eq 0 ]]; then
+			exit 1
+		fi
 	fi
 
 	$dd if="/dev/cdrom" of="$_iso"
@@ -1684,26 +1715,33 @@ do_rmiso()
 	fi
 
 	_iso="$1"
-	if [[ $(expr $1 : '/') -eq "0" ]]; then
+	if [[ $(expr "$1" : '/') -eq "0" ]]; then
 		_iso="$isodir/$1"
 	fi
 
 	if [[ -f "$_iso" ]]; then
-		echo -n "Delete \"$1\", Are you sure (y/*)? "
-		read yesno
+		#echo -n "Delete \"$1\", Are you sure (y/*)? "
+		are_you_sure "Delete \"$1\":"
+		#read yesno
 
-		case $yesno in
-			[yY]*)
-				$rm -v "$_iso"
-				exit $?
-				;;
-			*)
-				exit 0
-				;;
-		esac
+		#case $yesno in
+		#	[yY]*)
+		#		$rm -v "$_iso"
+		#		exit $?
+		#		;;
+		#	*)
+		#		exit 0
+		#		;;
+		#esac
+		if [[ $? -eq 1 ]]; then
+			$rm "$_iso"
+			exit $?
+		else
+			exit 1
+		fi
 	fi
 
-	echo "There isn't any "ISO" with this name !!!"
+	echo_error "There isn't any "ISO" with this name !!!"
 	exit 1
 	
 }
@@ -1724,7 +1762,7 @@ do_mktmpl()
 	fi
 
 	if [[ -f "$bidir/$_basename" ]]; then
-		echo_error "there is a base image with \"$_basename\" name !!"
+		echo_error "there is a template with \"$_basename\" name !!"
 		exit 1
 	fi
 
@@ -1743,20 +1781,26 @@ do_mktmpl()
 		if [[ ${media[i]} = "disk" &&  ! -z ${disk[i]} ]];  then
 			# Check if path is Absolute?
 			disk=${disk[i]}
-			if [[ $(expr ${disk} : '/') -eq 0 ]]; then
+			if [[ $(expr "${disk}" : '/') -eq 0 ]]; then
 				disk="${vmstrg}/${disk}"
 			fi
 
-			echo "Use \"$disk\" disk as base ..."
+			echo_info "Use \"$disk\" disk as base ..."
 			# Check if the primary block device exists in the host.
 			if [ ! -e ${disk} ]; then
 				echo_error "Primary virtual drive (${disk}) doesn't exist or isn't readable."
 				exit 1
 			fi
 
-			echo "Please wait ..."
+			echo_info "Please wait ..."
 			"$kvmimg" convert -O qcow2 "${disk}" "$bidir/$_basename"
-			exit $?
+			_ret="$?"
+			if [[ $_ret -eq "0" ]]; then
+				echo_result "Template \"$_basename\" been created."
+			else 
+				echo_error "Can't create template, $( $perror $ret )"
+			fi
+			exit $ret
 		fi
 	done
 	echo_error "Primary virtual drive doesn't exist."
@@ -1775,29 +1819,41 @@ do_rmtmpl()
 		exit 1
 	fi
 
-	echo "NOTE: after deleting this base, you can't boot all of"
-	echo "      your machines that are based on this image !!"
-	echo -n "Delete \"$1\", Are you sure (y/*)? "
-	read yesno
+	echo_info "NOTE: after deleting this base, you can't boot all of"
+	echo_info "      your machines that are based on this image !!"
+	are_you_sure "Delete \"$1\":"
+	if [[ $? -eq "1" ]]; then
+		are_you_sure "Again ... ,"
+		if [[ $? -eq 1 ]]; then
+			$rm "$bidir/$1" >/dev/null 2>&1
+			exit $?
+		else
+			exit 1
+		fi
+	else
+		exit 1
+	fi
+	#echo -n "Delete \"$1\", Are you sure (y/*)? "
+	#read yesno
 
-	case $yesno in
-		[yY]*)
-			echo -n "Again ... , Are you sure (y/*)? "
-			read yesno
-			case $yesno in
-				[yY]*)
-					$rm -v "$bidir/$1"
-					exit $?
-					;;
-				*)
-					exit 0
-					;;
-			esac
-			;;
-		*)
-			exit 0
-			;;
-	esac
+	#case $yesno in
+	#	[yY]*)
+	#		echo -n "Again ... , Are you sure (y/*)? "
+	#		read yesno
+	#		case $yesno in
+	#			[yY]*)
+	#				$rm -v "$bidir/$1"
+	#				exit $?
+	#				;;
+	#			*)
+	#				exit 0
+	#				;;
+	#		esac
+	#;;
+	#	*)
+	#		exit 0
+	#		;;
+	#esac
 
 }
 
@@ -2026,12 +2082,13 @@ case "${1}" in
 		do_edit "${2}"
 		;;
 	"chconf")
-		__ch_args=( $@ )
-		# remove command (chconf)
+		__i=0
+		for __var in "$@"; do
+			__ch_args[$__i]=$__var
+			__i=$((__i + 1))
+		done
 		unset __ch_args[0]
-
-		__rb_args=( ${__ch_args[@]} )
-		do_chconf ${__rb_args[@]}
+		do_chconf "${__ch_args[@]}"
 		;;
 	"whoami")
 		echo $($uname -n)

@@ -46,6 +46,22 @@ _verify_vmstrg()
 	vmstrg=`echo $tx | cut -s -d ";" -f 1`;
 }
 
+# check validity of "sid": storage id
+# usage: isvalid_vmstrg "sid"
+isvalid_vmstrg()
+{
+	sid="$1"
+
+	tx=$(read_config_file "$cf_VMStorages"| while read __i; do
+		__id=`echo $__i | cut -s -d ";" -f 1`;
+		if [[ "$__id" = "$sid" ]]; then
+			echo "$__id"
+			exit 0
+		fi
+	done)
+	if [[ -z "$tx" ]]; then echo_error "Bad storage id !"; exit 1; fi
+}
+
 load_configfile()
 {
 	if [ -r "$confdir/$1.pvm" ]; then

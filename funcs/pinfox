@@ -138,11 +138,21 @@ _pinfox_vminfo()
 	if [[ ("$strgtype" = "$STRG_FS") && (! -z "$first_disk") ]]; then
 		infox+=$($kvmimg snapshot -l $first_disk | $sed -e "/Snapshot list:/d" -e "/ID   /d" | 
 			while read __i; do
+				_snap_des=($__i)
+				_snap_des_size=${#_snap_des[@]}
 				infox="<snap>"
-				_snap_id=$(echo $__i | $cut -s -d " " -f 1)
-				_snap_name=$(echo $__i | $cut -s -d " " -f 2)
-				_snap_date=$(echo $__i | $cut -s -d " " -f 4)
-				_snap_hour=$(echo $__i | $cut -s -d " " -f 5)
+				_snap_id=${_snap_des[0]}
+				if [[ $_snap_des_size -eq 5 ]]; then
+					# snapshot with name
+					_snap_name=""
+					_snap_date=${_snap_des[2]}
+					_snap_hour=${_snap_des[3]}
+				else
+					# esnapshot without name
+					_snap_name=${_snap_des[1]}
+					_snap_date=${_snap_des[3]}
+					_snap_hour=${_snap_des[4]}
+				fi
 				infox+="<id>$_snap_id</id><name>$_snap_name</name><date>$_snap_date</date><hour>$_snap_hour</hour>"
 				infox+="</snap>"
 				echo -n $infox

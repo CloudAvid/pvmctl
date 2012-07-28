@@ -30,6 +30,17 @@ if [[ ! -f $basedir/etc/backup-log-file ]]; then
 	echo "bp.log" >> $basedir/etc/backup-log-file
 fi
 
+if [[ ! -f $basedir/etc/rsites ]]; then
+	echo "# Remote Site Settings for Syncronization Process" > $basedir/etc/rsites
+	echo "# Format: IPAddress;type;prefix;user;password;bindto" >> $basedir/etc/rsites
+	echo "# IPAddress: address of remote site" >> $basedir/etc/rsites
+	echo "# type: remote sync type, values: rsync,scp " >> $basedir/etc/rsites
+	echo "# prefix: prefix address to sync data" >> $basedir/etc/rsites
+	echo "# user: username to connect" >> $basedir/etc/rsites
+	echo "# password: password of specified user" >> $basedir/etc/rsites
+	echo "# bindto: syncronization from whom PVM in the cluster" >> $basedir/etc/rsites
+fi
+
 if [[ ! -f $basedir/etc/rsite-sync-log-file ]]; then
 	echo "# Log file for Remote Site Syncronization Process" > $basedir/etc/rsite-sync-log-file
 	echo "rsync.log" >> $basedir/etc/rsite-sync-log-file

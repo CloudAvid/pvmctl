@@ -17,6 +17,14 @@ ip=""
 # Description about VM
 des=""
 
+# Offline Backup Schedule ...
+# Values Are: sun,mon,tue,wed,thu,fri,sat
+# You can set values in this forms:
+# 	offback="thu"
+# 	offback="sun,wed"
+# 	offback="all"   means at all days.
+offback=""
+
 # How much RAM to associate with the VM.
 # This is the max amount of RAM that it will use.
 mem="1024"
