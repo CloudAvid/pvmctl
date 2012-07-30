@@ -5,35 +5,17 @@
 
 . /etc/pvm.conf
 
-max_snaps="7"
-snaps_tag="__Auto_"
+max_snaps="2"
 
 vms=$( $pvmctl "status" | $sed -e "1d" )
 exclude_vms=( $( read_config_file "$cf_snap_exclude" ) )
-
-#  This function will removes oldest snapshot If the number of host snapshots 
-#+ be greater then $max_snaps.
-#  usage: rotate_snaps host
-rotate_snaps()
-{
-	_no_snaps=$( $pvmctl "snaps" "$1"  | $sed -n -e "/$snaps_tag[0-9]*/p"  | $wc -l )
-	if (( $_no_snaps < $max_snaps )); then
-		return 0
-	fi
-
-	_oldest_snap=$( $pvmctl "snaps" "$1"  | $sed -n -e "/$snaps_tag[0-9]*/p"  | \
-				$sed -n -e "1p" | $cut -d ' ' -f 1 )
-	echo "Remove oldest snapshot of \"$1\": id=$_oldest_snap."
-	$pvmctl "rmsnap" "$1" "$_oldest_snap"
-	return $?
-}
 
 for i in $vms; do
 	search_array "$i" "${exclude_vms[@]}"
 	if [[ $? -eq 0 ]]; then
 		echo "Process \"$i\" ..."
-		rotate_snaps "$i"
-		$pvmctl "mksnap" "$i" "$snaps_tag$RANDOM"
+		rotate_snaps "$i" $max_snaps
+		$pvmctl "mksnap" "$i" "$autosnaps_tag$RANDOM"
 	fi
 done
 

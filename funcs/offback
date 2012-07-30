@@ -1,0 +1,35 @@
+#!/bin/bash
+# functions to manage offsite-backup settings
+
+# Delete remote site from setting file
+# usage: do_delrsite "config line"
+do_delrsite()
+{
+	local rsite
+	if [[ -z $1 ]]; then
+		echo_usage "delrsite config_line"
+		exit 1
+	fi
+	$sed -i -e "/${1//'/'/\/}/d" $cf_offback_rsites
+}
+
+# Delete remote site from setting file
+# usage: do_addrsite "config line"
+do_addrsite()
+{
+	if [[ -z $1 ]]; then
+		echo_usage "addrsite config_line"
+		exit 1
+	fi
+	echo "$1" >> $cf_offback_rsites
+}
+
+# Change node to backup-up offline-vms
+do_choffnode()
+{
+	if [[ -z $1 ]]; then
+		echo_usage "choffnode node_name"
+		exit 1
+	fi
+	echo "$1" > $cf_offbacknode_4_offvm
+}

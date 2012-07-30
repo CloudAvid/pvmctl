@@ -49,6 +49,11 @@ _pinfox_vminfo()
 	infox="<name>$1</name>"
 	infox+="<id>$id</id><sid>$sid</sid>"
 	infox+="<des>$des</des><ip>$ip</ip>"
+	infox+="<offback>"
+	infox+="<weekday>$offback_weekday</weekday>"
+	infox+="<hour>$offback_hour</hour>"
+	infox+="<autosnap_no>$offback_autosnap_no</autosnap_no>"
+	infox+="</offback>"
 	infox+="<vsys>"
 	infox+="<nic>$nic</nic>"
 	infox+="<cpu>"
@@ -406,6 +411,28 @@ pinfox_usbs()
 		echo -n $infox
 	done)
 	infox+="</pvm_usbs>"
+	echo $infox
+}
+
+# Generate offline backup settings
+pinfox_offback()
+{
+	local infox
+	infox="<pvm_offback ver=\"$xver\">"
+	infox+="<offnode>$(read_config_file $cf_offbacknode_4_offvm)</offnode>"
+	infox+="<rsites>"
+	infox+=$(read_config_file $cf_offback_rsites | while read rsite; do
+		infox="<rsite>"
+		infox+="<address>$(echo $rsite | $cut -d ';' -f 1)</address>"
+		infox+="<type>$(echo $rsite | $cut -d ';' -f 2)</type>"
+		infox+="<prefix>$(echo $rsite | $cut -d ';' -f 3)</prefix>"
+		infox+="<username>$(echo $rsite | $cut -d ';' -f 4)</username>"
+		infox+="<password>$(echo $rsite | $cut -d ';' -f 5)</password>"
+		infox+="<bindto>$(echo $rsite | $cut -d ';' -f 6)</bindto>"
+		infox+="</rsite>"
+		echo -n $infox
+	done)
+	infox+="</rsites></pvm_offback>"
 	echo $infox
 }
 

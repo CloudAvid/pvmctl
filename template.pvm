@@ -18,12 +18,18 @@ ip=""
 des=""
 
 # Offline Backup Schedule ...
-# Values Are: sun,mon,tue,wed,thu,fri,sat
+# offback_weekday Values Are: sun,mon,tue,wed,thu,fri,sat
 # You can set values in this forms:
-# 	offback="thu"
-# 	offback="sun,wed"
-# 	offback="all"   means at all days.
-offback=""
+# 	offback_weekday="sun,mon,tue,wed,thu,fri,sat"
+# 	offback_weekday="sun,wed"
+# 	offback_weekday="all"   means at all days.
+# offback_hour is hour in day that we should get offback.
+# offback_hour format is: "hh:mm"
+# 	hh == 0 .. 23
+# 	mm == 0 .. 59
+offback_weekday=""
+offback_hour=""
+offback_autosnap_no=""
 
 # How much RAM to associate with the VM.
 # This is the max amount of RAM that it will use.

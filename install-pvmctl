@@ -11,6 +11,7 @@ fi
 mkdir -p $basedir/{etc,root-etc,Scripts,var,VMStorage}
 mkdir -p $basedir/etc/pvm
 mkdir -p $basedir/var/{run,mon,log}
+mkdir -p $basedir/var/run/{rcf,lck}
 mkdir -p $basedir/VMStorage/{BIs,FLPs,ISOs,VMs}
 mkdir -p $logdir
 touch "$logdir/vms.log"
@@ -38,7 +39,7 @@ if [[ ! -f $basedir/etc/rsites ]]; then
 	echo "# prefix: prefix address to sync data" >> $basedir/etc/rsites
 	echo "# user: username to connect" >> $basedir/etc/rsites
 	echo "# password: password of specified user" >> $basedir/etc/rsites
-	echo "# bindto: syncronization from whom PVM in the cluster" >> $basedir/etc/rsites
+	echo "# bindto: syncronization from whom PVM in the cluster, * means all" >> $basedir/etc/rsites
 fi
 
 if [[ ! -f $basedir/etc/rsite-sync-log-file ]]; then
@@ -81,6 +82,10 @@ if [[ ! -f $basedir/etc/VMStorages ]]; then
 	echo "#         type: could be fs: for a generic file system storage, or vg: for a volume group" >> $basedir/etc/VMStorages
 	echo "#         path: could be full path to the storage" >> $basedir/etc/VMStorages
 	echo "#         name: could be an string, for storage name" >> $basedir/etc/VMStorages
+fi
+
+if [[ ! -f $basedir/etc/offnode ]]; then
+	echo "# Node would sync offline-vms with offsite" > $basedir/etc/offnode
 fi
 
 cat "$basedir/etc/VMStorages" | grep "/pvm/VMStorage/VMs;" > /dev/null
@@ -135,6 +140,10 @@ fi
 cat /etc/crontab | grep "/sbin/hwclock -w" > /dev/null
 if [[ $? -ne 0 ]]; then
 	echo "02 0 * * * root /sbin/hwclock -w" >> /etc/crontab
+fi
+cat /etc/crontab | grep "/pvm/Scripts/pvm-offsite-backup-sched" >/dev/null 
+if [[ $? -ne 0 ]]; then
+	echo "0 23 * * * root /pvm/Scripts/pvm-offsite-backup-sched" >> /etc/crontab
 fi
 service crond restart >/dev/null 2>&1
 

@@ -1,0 +1,59 @@
+#!/bin/bash
+# Create offline backup from "VM ($1)" in offsite
+
+. /etc/pvm.conf
+. "$funcdir/vm"
+
+logfile=$(gen_log_file_fpath $cf_rsite_sync_log_file)
+
+check_host "$1"
+load_configfile "$1"
+
+myname="$($uname -n)"
+
+echo_result "$($date): rsite backup for $1 started." >> $logfile
+
+read_config_file $cf_offback_rsites | while read rsite; do
+	bindto=$(echo $rsite | $cut -d ';' -f 6)
+	if [[ "$bindto" = "$myname" || "$bindto" = "*" ]]; then
+		_address=$(echo $rsite | $cut -d ';' -f 1)
+		_type=$(echo $rsite | $cut -d ';' -f 2)
+		_prefix=$(echo $rsite | $cut -d ';' -f 3)
+		_user=$(echo $rsite | $cut -d ';' -f 4)
+		_passwd=$(echo $rsite | $cut -d ';' -f 5)
+
+		echo_result "rsite $1: $_address selected." >> $logfile
+		if [[ $_type != "rsync" ]]; then
+			echo_error "rsite $1: bad rsite type." >> $logfile
+		fi
+
+		$pvmctl pause $1
+		export RSYNC_PASSWORD=$_password
+		$rsync -avr -S "$vmstrg" $_user@$_address:"$_prefix${vmstrg%/$1}" >>/dev/null 2>&1
+		ret="$?"
+		unset SYNC_PASSWORD
+		if [[ $ret -ne "0" ]]; then
+			echo_error "rsite $1: Can't create offback, $(pperror $ret)" >> $logfile
+		fi
+		$pvmctl resume $1
+	fi
+done
+
+$pvmctl "status" "$1" > /dev/null
+if [[ $? -eq 0 ]]; then
+	echo "$($date): Create autosnapshot for $1." >> $logfile
+	if [[ (-z $offback_autosnap_no) || ($offback_autosnap_no = 0) ]]; then
+		rotate_snaps "$1" 0 >/dev/null 2>&1
+	else
+		rotate_snaps "$1" "$offback_autosnap_no" >/dev/null 2>&1
+		ret=$?
+		if [[ $ret -eq 0 ]]; then
+			$pvmctl "mksnap" "$1" "$autosnaps_tag$RANDOM" >/dev/null 2>&1
+		else
+			echo_error "snap $1: Can't rotate snaps." >> $logfile
+		fi
+	fi
+fi
+
+echo "$($date): rsite backup for $1 finished." >> $logfile
+

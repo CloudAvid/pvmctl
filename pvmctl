@@ -4,6 +4,7 @@
 
 . /etc/pvm.conf
 . "$funcdir/vm"
+. "$funcdir/offback"
 
 # The file to use as a template when creating new VM configs
 template="$basedir/Scripts/template.pvm"
@@ -20,7 +21,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.11.0"
+scriptversion="2.12.0"
 
 # Functions used in the script
 load_defaults()
@@ -242,7 +243,10 @@ do_start()
 		esac
 
 		# Build the drive entry that will be passed to kvm
-		drives="$drives -drive index=$index,media=$media,if=$disktype,file=$disk$extboot$cachestr$disksnapstr"
+		drives[_drives_index]="-drive"
+		_drives_index=$((_drives_index + 1))
+		drives[_drives_index]="index=$index,media=$media,if=$disktype,file=$disk$extboot$cachestr$disksnapstr"
+		_drives_index=$((_drives_index + 1))
 	done
 
 	if [[ ($ide_index -eq 0) && ($virtio_index -eq 0) && ($scsi_index -eq 0) && ($cd_index -eq 2) ]]; then
@@ -428,7 +432,7 @@ do_start()
 		-monitor $confmonitor \
 		$confusb \
 		$confacpi \
-		$drives
+		"${drives[@]}"
 	# check if the vm is running?
 	if [[ $? -eq 1 ]]; then
 		echo_error "some error in starting $host"
@@ -666,7 +670,7 @@ do_mkimg()
 	if [[ $? -eq 0 ]]; then
 		echo_result "Image \"$2\" created. "
 	else
-		echo_error "Can't create new disk, $( $perror $? )"
+		echo_error "Can't create new disk, $( pperror $? )"
 		exit 1
 	fi
 }
@@ -702,7 +706,7 @@ do_convertimg()
 	if [[ $? -eq 0 ]]; then
 		echo_result "Image \"$3\" created. "
 	else
-		echo_error "Can't create new disk: $( $perror $? )"
+		echo_error "Can't create new disk: $( pperror $? )"
 		exit 1
 	fi
 }
@@ -845,7 +849,7 @@ verify_eths()
 	unset vlan
 	unset macaddr
 
-	load_configfile "${1}"
+	load_configfile "$1"
 
 	# Number Of ethernet cards
 	no_eths=${#vlan[@]}
@@ -889,6 +893,35 @@ verify_eths()
 	return 0
 }
 
+# Verify off-site 
+verify_offback_sched()
+{
+	local days
+	local hour
+	local minute
+	local cpos
+
+	load_configfile "$1"
+
+	(
+		flock -s 201
+		$sed -i -e "/ $1$/d" $rcf_offback_sched >/dev/null 2>&1
+		if [[ ! -z $offback_weekday ]]; then
+			days=$offback_weekday
+			if [[ $days = "all" ]]; then days="*"; fi
+			if [[ ! -z $offback_hour ]]; then
+				cpos=$(expr index $offback_hour ':')
+				if [[ $cpos -ne "0" ]]; then
+					hour=${offback_hour:0:$((cpos - 1))}
+					minute=${offback_hour:$cpos}
+
+					echo "$minute $hour * * $days root $pvm_offsite_backup $1" >> $rcf_offback_sched 
+				fi
+			fi
+		fi
+	) 201>$lck_offback_sched
+}
+
 #  ReBuild host configuration file
 #  usage: _rebuild_conf host "list of parameters seprated with space"
 #+      example: _rebuild_conf tvm id=\"2\"
@@ -916,6 +949,9 @@ _rebuild_conf()
 	echo "sid=\"$sid\"" >> "$confdir/${clist[0]}.pvm"
 	echo "ip=\"$ip\"" >> "$confdir/${clist[0]}.pvm"
 	echo "des=\"$des\"" >> "$confdir/${clist[0]}.pvm"
+	echo "offback_weekday=\"$offback_weekday\"" >> "$confdir/${clist[0]}.pvm"
+	echo "offback_hour=\"$offback_hour\"" >> "$confdir/${clist[0]}.pvm"
+	echo "offback_autosnap_no=\"$offback_autosnap_no\"" >> "$confdir/${clist[0]}.pvm"
 	echo "mem=\"$mem\"" >> "$confdir/${clist[0]}.pvm"
 	echo "noacpi=\"$noacpi\"" >> "$confdir/${clist[0]}.pvm"
 	echo "cpus=\"$cpus\"" >> "$confdir/${clist[0]}.pvm"
@@ -970,6 +1006,7 @@ _rebuild_conf()
 	done
 
 	verify_eths "${clist[0]}"
+	verify_offback_sched "${clist[0]}"
 	$rm -f "$temp_conf"
 }
 
@@ -1798,7 +1835,7 @@ do_mktmpl()
 			if [[ $_ret -eq "0" ]]; then
 				echo_result "Template \"$_basename\" been created."
 			else 
-				echo_error "Can't create template, $( $perror $ret )"
+				echo_error "Can't create template, $( pperror $ret )"
 			fi
 			exit $ret
 		fi
@@ -2112,6 +2149,15 @@ case "${1}" in
 		;;
 	"unloadvsw")
 		do_unloadvsw "$2"
+		;;
+	"delrsite")
+		do_delrsite "$2"
+		;;
+	"addrsite")
+		do_addrsite "$2"
+		;;
+	"choffnode")
+		do_choffnode "$2"
 		;;
 	"ver")
 		do_ver
