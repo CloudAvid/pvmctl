@@ -43,7 +43,8 @@ $pvmctl "status" "$1" > /dev/null
 if [[ $? -eq 0 ]]; then
 	echo "$($date): Create autosnapshot for $1." >> $logfile
 	if [[ (-z $offback_autosnap_no) || ($offback_autosnap_no = 0) ]]; then
-		rotate_snaps "$1" 0 >/dev/null 2>&1
+		#rotate_snaps "$1" 0 >/dev/null 2>&1
+		echo_result "snap $1: Snapshot disabled." >> $logfile
 	else
 		rotate_snaps "$1" "$offback_autosnap_no" >/dev/null 2>&1
 		ret=$?
