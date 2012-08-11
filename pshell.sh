@@ -40,6 +40,9 @@ case "$cmd" in
 "pinfox")
 	echo $sudo $pinfox "$pshell_args" > $cmdfile
 	;;
+"tnc_tool")
+	echo $sudo "/sbin/tnc_tool" "$pshell_args" > $cmdfile
+	;;
 "pvmon")
 	echo 'echo "<cmd><sid>0</sid><cid>6</cid></cmd>" | $sudo $socat - UNIX-CONNECT:/var/run/pcmd.sock; echo' > $cmdfile
 	;;

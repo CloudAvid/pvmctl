@@ -21,7 +21,8 @@ touch "$logdir/rsync.log"
 cp ./* $basedir/Scripts/ 2>/dev/null
 cp -r ./funcs/ $basedir/Scripts/ 2>/dev/null
 cp -r ./root-etc/ $basedir/ 2>/dev/null
-cp pshell pshell.sh /bin/ 2>/dev/null
+cp pshell.sh /bin/ 2>/dev/null
+cp pshell-sl6 /bin/pshell 2>/dev/null
 
 unlink /etc/pvm.conf 2>/dev/null
 ln -s $basedir/root-etc/pvm.conf /etc/pvm.conf 2>/dev/null
@@ -116,7 +117,7 @@ useradd -s /bin/pshell -p pvmuser@pvm pvm
 # changing sudo 
 chmod +w /etc/sudoers
 sed -i -e "/^pvm/d" /etc/sudoers
-echo "pvm     ALL= NOPASSWD: /pvm/Scripts/pvmctl, /pvm/Scripts/pcad, /pvm/Scripts/pinfox, /usr/bin/scp,  /root/pvm/bin/socat" >> /etc/sudoers
+echo "pvm     ALL= NOPASSWD: /pvm/Scripts/pvmctl, /pvm/Scripts/pcad, /pvm/Scripts/pinfox, /usr/bin/scp,  /root/pvm/bin/socat, /sbin/tnc_tool" >> /etc/sudoers
 # change sudo settings to work without standard input
 sed -i -e "/Defaults    requiretty/d" /etc/sudoers
 chmod -w /etc/sudoers
