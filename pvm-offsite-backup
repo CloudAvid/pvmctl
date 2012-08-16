@@ -20,7 +20,7 @@ read_config_file $cf_offback_rsites | while read rsite; do
 		_type=$(echo $rsite | $cut -d ';' -f 2)
 		_prefix=$(echo $rsite | $cut -d ';' -f 3)
 		_user=$(echo $rsite | $cut -d ';' -f 4)
-		_passwd=$(echo $rsite | $cut -d ';' -f 5)
+		_password=$(echo $rsite | $cut -d ';' -f 5)
 
 		echo_result "rsite $1: $_address selected." >> $logfile
 		if [[ $_type != "rsync" ]]; then
@@ -29,7 +29,7 @@ read_config_file $cf_offback_rsites | while read rsite; do
 
 		$pvmctl pause $1
 		export RSYNC_PASSWORD=$_password
-		$rsync -avr -S "$vmstrg" $_user@$_address:"$_prefix${vmstrg%/$1}" >>/dev/null 2>&1
+		$rsync -avr -S "$vmstrg" rsync://$_user@$_address/PVM/"$_prefix${vmstrg%/$1}" >>/dev/null 2>&1
 		ret="$?"
 		unset SYNC_PASSWORD
 		if [[ $ret -ne "0" ]]; then
