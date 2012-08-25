@@ -6,8 +6,10 @@
 
 logfile=$(gen_log_file_fpath $cf_rsite_sync_log_file)
 
-check_host "$1"
-load_configfile "$1"
+if [[ "$1" != "$pvmdir_offback_name" ]]; then
+	check_host "$1"
+	load_configfile "$1"
+fi
 
 myname="$($uname -n)"
 
@@ -27,17 +29,30 @@ read_config_file $cf_offback_rsites | while read rsite; do
 			echo_error "rsite $1: bad rsite type." >> $logfile
 		fi
 
-		$pvmctl pause $1
 		export RSYNC_PASSWORD=$_password
-		$rsync -avr -S "$vmstrg" rsync://$_user@$_address/PVM/"$_prefix${vmstrg%/$1}" >>/dev/null 2>&1
-		ret="$?"
-		unset SYNC_PASSWORD
-		if [[ $ret -ne "0" ]]; then
-			echo_error "rsite $1: Can't create offback, $(pperror $ret)" >> $logfile
+		if [[ "$1" = "$pvmdir_offback_name" ]]; then
+			$rsync -avr -S "$bidir" rsync://$_user@$_address/PVM/"${bidir%/*}" >>/dev/null 2>&1
+			$rsync -avr -S "$isodir" rsync://$_user@$_address/PVM/"${isodir%/*}" >>/dev/null 2>&1
+		else
+			$pvmctl pause $1
+			$rsync -avr -S "$vmstrg" rsync://$_user@$_address/PVM/"$_prefix${vmstrg%/$1}" >>/dev/null 2>&1
+			ret="$?"
+			if [[ $ret -ne "0" ]]; then
+				echo_error "rsite $1: Can't create offback, $(pperror $ret)" >> $logfile
+			else
+				$rsync -avr -S "$confdir/$1.pvm" rsync://$_user@$_address/PVM/"$confdir/$1.pvm" >>/dev/null 2>&1
+			fi
+			$pvmctl resume $1
 		fi
-		$pvmctl resume $1
+		unset SYNC_PASSWORD
+		break;
 	fi
 done
+
+if [[ "$1" = "$pvmdir_offback_name" ]]; then
+	echo "$($date): rsite backup for $1 finished." >> $logfile
+	exit 0
+fi
 
 $pvmctl "status" "$1" > /dev/null
 if [[ $? -eq 0 ]]; then

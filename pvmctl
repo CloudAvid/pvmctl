@@ -21,7 +21,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.13.1"
+scriptversion="2.13.2"
 
 # Functions used in the script
 load_defaults()
@@ -896,30 +896,9 @@ verify_eths()
 # Verify off-site 
 verify_offback_sched()
 {
-	local days
-	local hour
-	local minute
-	local cpos
-
 	load_configfile "$1"
 
-	(
-		flock -s 201
-		$sed -i -e "/ $1$/d" $rcf_offback_sched >/dev/null 2>&1
-		if [[ ! -z $offback_weekday ]]; then
-			days=$offback_weekday
-			if [[ $days = "all" ]]; then days="*"; fi
-			if [[ ! -z $offback_hour ]]; then
-				cpos=$(expr index $offback_hour ':')
-				if [[ $cpos -ne "0" ]]; then
-					hour=${offback_hour:0:$((cpos - 1))}
-					minute=${offback_hour:$cpos}
-
-					echo "$minute $hour * * $days root $pvm_offsite_backup $1" >> $rcf_offback_sched 
-				fi
-			fi
-		fi
-	) 201>$lck_offback_sched
+	schedule_offback "$1" "$offback_weekday" "$offback_hour"
 }
 
 #  ReBuild host configuration file

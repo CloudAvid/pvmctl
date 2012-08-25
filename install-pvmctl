@@ -19,6 +19,7 @@ touch "$logdir/bp.log"
 touch "$logdir/rsync.log"
 
 cp ./* $basedir/Scripts/ 2>/dev/null
+"rm" $basedir/Scripts/install-pvmctl 2>/dev/null
 cp -r ./funcs/ $basedir/Scripts/ 2>/dev/null
 cp -r ./root-etc/ $basedir/ 2>/dev/null
 cp pshell.sh /bin/ 2>/dev/null
@@ -87,6 +88,21 @@ fi
 
 if [[ ! -f $basedir/etc/offnode ]]; then
 	echo "# Node would sync offline-vms with offsite" > $basedir/etc/offnode
+fi
+
+if [[ ! -f $basedir/etc/pvmdir-offback-policy ]]; then
+	echo "# Offback policy for pvm-directory (just for BIs & ISOs)" > $basedir/etc/pvmdir-offback-policy
+	echo "# format: " >> $basedir/etc/pvmdir-offback-policy
+	echo "# 	pvmdir_offback_weekday=\"\"" >> $basedir/etc/pvmdir-offback-policy
+	echo "# 	pvmdir_offback_hour=\"\"" >> $basedir/etc/pvmdir-offback-policy
+	echo "# You can set values in this forms:" >> $basedir/etc/pvmdir-offback-policy
+	echo "# 	pvmdir_offback_weekday=\"sun,mon,tue,wed,thu,fri,sat\"" >> $basedir/etc/pvmdir-offback-policy
+	echo "# 	pvmdir_offback_weekday=\"sun,wed\"" >> $basedir/etc/pvmdir-offback-policy
+	echo "# 	pvmdir_offback_weekday=\"all\"   means at all days." >> $basedir/etc/pvmdir-offback-policy
+	echo "# pvmdir_offback_hour is hour in day that we should get offback." >> $basedir/etc/pvmdir-offback-policy
+	echo "# pvmdir_offback_hour format is: \"hh:mm\"" >> $basedir/etc/pvmdir-offback-policy
+	echo "# 	hh == 0 .. 23" >> $basedir/etc/pvmdir-offback-policy
+	echo "# 	mm == 0 .. 59" >> $basedir/etc/pvmdir-offback-policy
 fi
 
 cat "$basedir/etc/VMStorages" | grep "/pvm/VMStorage/VMs;" > /dev/null
