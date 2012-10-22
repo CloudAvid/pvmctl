@@ -13,7 +13,7 @@ fi
 
 myname="$($uname -n)"
 
-echo_result "$($date): rsite backup for $1 started." >> $logfile
+echo_result "$($date): rsite backup for \"$1\" started." >> $logfile
 
 read_config_file $cf_offback_rsites | while read rsite; do
 	bindto=$(echo $rsite | $cut -d ';' -f 6)
@@ -24,25 +24,33 @@ read_config_file $cf_offback_rsites | while read rsite; do
 		_user=$(echo $rsite | $cut -d ';' -f 4)
 		_password=$(echo $rsite | $cut -d ';' -f 5)
 
-		echo_result "rsite $1: $_address selected." >> $logfile
+		echo_result "rsite \"$1\": $_address selected." >> $logfile
 		if [[ $_type != "rsync" ]]; then
-			echo_error "rsite $1: bad rsite type." >> $logfile
+			echo_error "rsite \"$1\": bad rsite type." >> $logfile 2>&1
 		fi
 
 		export RSYNC_PASSWORD=$_password
 		if [[ "$1" = "$pvmdir_offback_name" ]]; then
 			$rsync -avr -S "$bidir" rsync://$_user@$_address/PVM/"${bidir%/*}" >>/dev/null 2>&1
 			$rsync -avr -S "$isodir" rsync://$_user@$_address/PVM/"${isodir%/*}" >>/dev/null 2>&1
+			if [[ $? -ne "0" ]]; then
+				echo_error "rsite \"$1\": Can't create offback, $(pperror $ret)" >> $logfile 2>&1
+				echo_error "rsite \"$1\": Going to choose other site if exist." >> $logfile 2>&1
+				continue
+			fi
 		else
 			$pvmctl pause $1
 			$rsync -avr -S "$vmstrg" rsync://$_user@$_address/PVM/"$_prefix${vmstrg%/$1}" >>/dev/null 2>&1
 			ret="$?"
 			if [[ $ret -ne "0" ]]; then
-				echo_error "rsite $1: Can't create offback, $(pperror $ret)" >> $logfile
+				echo_error "rsite \"$1\": Can't create offback, $(pperror $ret)" >> $logfile 2>&1
+				echo_error "rsite \"$1\": Going to choose other site if exist." >> $logfile 2>&1
+				$pvmctl resume $1
+				continue
 			else
 				$rsync -avr -S "$confdir/$1.pvm" rsync://$_user@$_address/PVM/"$confdir/$1.pvm" >>/dev/null 2>&1
+				$pvmctl resume $1
 			fi
-			$pvmctl resume $1
 		fi
 		unset SYNC_PASSWORD
 		break;

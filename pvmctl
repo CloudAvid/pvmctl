@@ -21,7 +21,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.13.2"
+scriptversion="2.14.0"
 
 # Functions used in the script
 load_defaults()
@@ -893,14 +893,6 @@ verify_eths()
 	return 0
 }
 
-# Verify off-site 
-verify_offback_sched()
-{
-	load_configfile "$1"
-
-	schedule_offback "$1" "$offback_weekday" "$offback_hour"
-}
-
 #  ReBuild host configuration file
 #  usage: _rebuild_conf host "list of parameters seprated with space"
 #+      example: _rebuild_conf tvm id=\"2\"
@@ -985,7 +977,6 @@ _rebuild_conf()
 	done
 
 	verify_eths "${clist[0]}"
-	verify_offback_sched "${clist[0]}"
 	$rm -f "$temp_conf"
 }
 

@@ -43,27 +43,82 @@ schedule_offback()
 	local cpos 
 	local hour
 	local minute
-	if [[ -z $1 || -z $2 || -z $3 ]]; then
+	if [[ -z $1 ]]; then
 		return 1
 	fi
 
 	days="$2"
 	offback_hour="$3"
-	(
-		flock -s 201
-		$sed -i -e "/ $1$/d" $rcf_offback_sched >/dev/null 2>&1
-		if [[ ! -z $days ]]; then
-			if [[ $days = "all" ]]; then days="*"; fi
-			if [[ ! -z $offback_hour ]]; then
-				cpos=$(expr index $offback_hour ':')
-				if [[ $cpos -ne "0" ]]; then
-					hour=${offback_hour:0:$((cpos - 1))}
-					minute=${offback_hour:$cpos}
+	$sed -i -e "/ $1$/d" $rcf_offback_sched >/dev/null 2>&1
+	if [[ (! -z $days) && ($days != "none") ]]; then
+		if [[ $days = "all" ]]; then days="*"; fi
+		if [[ ! -z $offback_hour ]]; then
+			cpos=$(expr index $offback_hour ':')
+			if [[ $cpos -ne "0" ]]; then
+				hour=${offback_hour:0:$((cpos - 1))}
+				minute=${offback_hour:$cpos}
 
-					echo "$minute $hour * * $days root $pvm_offsite_backup $1" >> $rcf_offback_sched 
-				fi
+				echo "$minute $hour * * $days root $pvm_offsite_backup $1" >> $rcf_offback_sched 
 			fi
 		fi
-	) 201>$lck_offback_sched
+	fi
 	return 0
 }
+
+schedule_offback_lock()
+{
+	local ret
+	(
+		flock -s 201
+		schedule_offback "$1" "$2" "$3"
+		ret="$?"
+	) 201>$lck_offback_sched
+	return $ret
+}
+
+schedule_vm()
+{
+	unset offback_weekday
+	unset offback_hour
+
+	load_configfile "$1"
+
+	schedule_offback "$1" "$offback_weekday" "$offback_hour"
+	return $?
+}
+
+schedule_vm_lock()
+{
+	load_configfile "$1"
+
+	schedule_offback_lock "$1" "$offback_weekday" "$offback_hour"
+	return $?
+}
+
+# Delete vm scheduling info for vm.
+# usage: del_vm_sched_info "vm-name"
+del_vm_sched_info()
+{
+	$sed -i -e "/ $1$/d" $rcf_offback_sched >/dev/null 2>&1
+}
+
+# Retrive VM schedule info from "$rcf_offback_sched" file.
+# usage: vm_sched_info "vm-name"
+vm_sched_info()
+{
+	$sed -n -e "/ $1$/p" "$rcf_offback_sched"
+}
+
+# Append VM schedule info to the /etc/crontab
+# usage: crontab_vm "vm-name"
+crontab_vm()
+{
+	local vm_sched
+	vm_sched=$(vm_sched_info "$1")
+	if [[ ! -z $vm_sched ]]; then
+		echo "$vm_sched" >> /etc/crontab
+		return 0
+	fi
+	return 1
+}
+

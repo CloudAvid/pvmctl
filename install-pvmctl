@@ -105,6 +105,11 @@ if [[ ! -f $basedir/etc/pvmdir-offback-policy ]]; then
 	echo "# 	mm == 0 .. 59" >> $basedir/etc/pvmdir-offback-policy
 fi
 
+if [[ ! -f $basedir/etc/is_mirror ]]; then
+	echo "# Is this site in mirror state?" > $basedir/etc/is_mirror
+	echo "# If site is mirro just write \"yes\" in this file." >> $basedir/etc/is_mirror
+fi
+
 cat "$basedir/etc/VMStorages" | grep "/pvm/VMStorage/VMs;" > /dev/null
 if [[ $? -ne 0 ]]; then
 	echo "0;fs;/pvm/VMStorage/VMs;Default storage" >> $basedir/etc/VMStorages
@@ -160,7 +165,8 @@ if [[ $? -ne 0 ]]; then
 fi
 cat /etc/crontab | grep "/pvm/Scripts/pvm-offsite-backup-sched" >/dev/null 
 if [[ $? -ne 0 ]]; then
-	echo "0 23 * * * root /pvm/Scripts/pvm-offsite-backup-sched" >> /etc/crontab
+	__min=$(($RANDOM % 60))
+	echo "$__min 8,9,10,12,14,16,18,20,22 * * * root /pvm/Scripts/pvm-offsite-backup-sched" >> /etc/crontab
 fi
 service crond restart >/dev/null 2>&1
 
