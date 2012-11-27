@@ -1,0 +1,210 @@
+#!/bin/bash
+# basic functions to manage VM templates.
+
+# Create a template from specified vm.
+# usage do_mktmpl host [template_name]
+do_mktmpl()
+{
+	if [[ -z "$1" ]]; then
+		echo_usage "mktmpl host [template_name]"
+		exit 1
+	fi
+	check_host ${1}
+	check_off ${1}
+	load_configfile "${1}"
+	
+	_basename="$1"
+	if [[ ! -z "$2" ]]; then
+		_basename="$2"
+	fi
+
+	if [[ -f "$bidir/$_basename" || -d "$bidir/$_basename" ]]; then
+		echo_error "there is a template with \"$_basename\" name !!"
+		exit 1
+	fi
+
+	# Number of virtual disks
+	no_vdisk="${#disk[@]}"
+	# Number of processed virtual disks
+	np_vdisk="0"
+
+	$mkdir -p "$bidir/$_basename" > /dev/null 2>&1
+	# Create a copy of config file.
+	$cp "$confdir/$1.pvm" "$bidir/$_basename/$_basename-config.pvm"
+	$sed -i -e "s/^basevm=.*/basevm=\"\"/" "$bidir/$_basename/$_basename-config.pvm"
+
+	# Convert all disks.
+	for(( i=0; $np_vdisk < $no_vdisk; ++i)); do
+		if [[ ${disk[i]-__NULL__} = "__NULL__" ]]; then
+			continue;
+		fi
+		np_vdisk=$(( ++np_vdisk ))
+
+		if [[ ${media[i]} = "disk" &&  ! -z ${disk[i]} ]];  then
+			# Check if path is Absolute?
+			vm_disk=${disk[i]}
+			if [[ $(expr "${vm_disk}" : '/') -eq 0 ]]; then
+				vm_disk="${vmstrg}/${vm_disk}"
+			fi
+
+			if [ ! -e ${vm_disk} ]; then
+				echo_error "Virtual drive (${vm_disk}) doesn't exist or isn't readable."
+				continue
+			fi
+
+			echo_info "Convert \"$vm_disk\" disk, please wait ..."
+			"$kvmimg" convert -O qcow2 "${vm_disk}" "$bidir/$_basename/disk-$i.img"
+			$sed -i -e "s/^disk\[$i\]=.*/disk\[$i\]=\"$_basename\__-disk-$i.img\"/" "$bidir/$_basename/$_basename-config.pvm"
+			_ret="$?"
+			if [[ $_ret -ne "0" ]]; then
+				echo_error "Can't create template, $( pperror $ret )"
+				$rm -fr "$bidir/$_basename" >/dev/null 2>&1
+				exit $ret
+			fi
+		fi
+	done
+	echo_result "Template \"$_basename\" has been created."
+}
+
+# Remove template.
+do_rmtmpl()
+{
+	if [[ -z "$1" ]]; then
+		echo_usage "rmtmpl template_name"
+		exit 1
+	fi
+
+	if [[ ! -f "$bidir/$1" && ! -d "$bidir/$1" ]]; then
+		echo_error "There isn't any base with \"$1\" name !!"
+		exit 1
+	fi
+
+	echo_info "NOTE: after deleting this base, you can't boot all of"
+	echo_info "      your machines that are based on this image !!"
+	are_you_sure "Delete \"$1\":"
+	if [[ $? -eq "1" ]]; then
+		are_you_sure "Again ... ,"
+		if [[ $? -eq 1 ]]; then
+			$rm -fr "$bidir/$1" >/dev/null 2>&1
+			exit $?
+		else
+			exit 1
+		fi
+	else
+		exit 1
+	fi
+}
+
+# Create A Virtual Machine from a template (base image)
+do_create_from_filetmpl()
+{
+	if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
+		echo_usage "create template_name host_name sid"
+		exit 1
+	fi
+
+	_verify_vmstrg "$2" "$3"
+	# TODO support of VG
+	if [[ "$strgtype" = "$STRG_VG" ]]; then
+		echo_error "Doesn't support VG storage yet .."
+		exit 1;
+	fi
+
+	if [[ -f "${confdir}/${2}.pvm" ]]; then 
+		echo_error "Your host exists right now ..."
+		exit 1
+	fi
+	if [ -r ${bidir}/${1} ]; then
+		# Check if is there any template configuration file
+		if [[ -f "${bidir}/${1}.pvm" ]]; then
+			$sed -e "s/${1}/${2}/g" "${bidir}/${1}.pvm" > "/tmp/$2-beta"
+			template="/tmp/${2}-beta"
+		fi
+		do_new "$2" "$3"
+		if [[ -f "${bidir}/${1}.pvm" ]]; then 
+			$rm "/tmp/${2}-beta"
+			do_chconf "$2" basevm="$1" disk[0]="$2-OS.qcow2"
+		else
+			do_chconf "$2" basevm="$1" disktype[0]="ide" media[0]="disk" disk[0]="$2-OS.qcow2"
+		fi
+		"$mkdir" -p "$vmstrg" 
+		"$kvmimg" create -b  "$bidir/$1" -f  qcow2   "$vmstrg/$2-OS.qcow2" > /dev/null 
+	else 
+		echo_error "Can't read base image"
+		exit 1
+	fi
+}
+
+# Create A Virtual Machine from a full-template 
+do_create_from_dirtmpl()
+{
+	if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
+		echo_usage "create template_name host_name sid"
+		exit 1
+	fi
+
+	_verify_vmstrg "$2" "$3"
+	# TODO support of VG
+	if [[ "$strgtype" = "$STRG_VG" ]]; then
+		echo_error "Doesn't support VG storage yet .."
+		exit 1;
+	fi
+
+	if [[ -f "${confdir}/${2}.pvm" ]]; then 
+		echo_error "Your host exists right now ..."
+		exit 1
+	fi
+	if [ ! -d ${bidir}/${1} ]; then
+		echo_error "Template doesn't exist ..."
+		exit 1
+	fi
+	$sed -e "s/$1\__/$2/g" -e "/macaddr\[.*\]=\".*\"/d" "$bidir/$1/$1-config.pvm" > "/tmp/$2-beta"
+	template="/tmp/${2}-beta"
+	do_new "$2" "$3"
+	load_configfile "$2"
+
+	# Number of virtual disks
+	no_vdisk="${#disk[@]}"
+	# Number of processed virtual disks
+	np_vdisk="0"
+
+	# Create disks.
+	for(( i=0; $np_vdisk < $no_vdisk; ++i)); do
+		if [[ ${disk[i]-__NULL__} = "__NULL__" ]]; then
+			continue;
+		fi
+		np_vdisk=$(( ++np_vdisk ))
+
+		if [[ ${media[i]} = "disk" &&  ! -z ${disk[i]} ]];  then
+			if [ ! -e "$bidir/$1/disk-$i.img" ]; then
+				echo_error "Virtual drive (${vm_disk}) doesn't exist or isn't readable."
+				exit 1
+			fi
+
+			"$mkdir" -p "$vmstrg" 
+			"$kvmimg" create -b  "$bidir/$1/disk-$i.img" -f  qcow2   "$vmstrg/$2-disk-$i.img" > /dev/null 
+			_ret="$?"
+			if [[ $_ret -ne "0" ]]; then
+				echo_error "Can't create disk $i, $( pperror $ret )"
+				exit $ret
+			fi
+		fi
+	done
+	verify_eths "$2"
+	echo_info "\"$2\" has been created ."
+}
+
+# wrapper of do_create_from_filetmpl & do_create_from_dirtmpl
+do_create()
+{
+	if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
+		echo_usage "create template_name host_name sid"
+		exit 1
+	fi
+	if [[ -d "$bidir/$1" ]]; then
+		do_create_from_dirtmpl $1 $2 $3
+	else
+		do_create_from_filetmpl $1 $2 $3
+	fi
+}
+
