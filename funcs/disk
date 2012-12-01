@@ -1,0 +1,26 @@
+#!/bin/bash
+# Some functions to manage disks
+
+# Adding disk space of virtual machine ...
+do_resize()
+{
+	local index
+	if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
+		echo_usage "usage: host image_index size[K|M|G]"
+	fi
+
+	check_host "$1"
+	load_configfile "$1"
+
+	index=$(( $2 ))
+	if [[ ${media[index]} = "disk" && ! -z ${disk[index]} ]]; then
+		are_you_sure "Resizing ${disk[index]},"
+		if [[ $? -eq "0" ]]; then
+			return
+		fi
+		$kvmimg resize "$vmstrg/${disk[index]}" +$3 >/dev/null 2>&1
+		if [[ $? == "0" ]]; then 
+			echo_result "\"${disk[index]}\" -disk of \"$1\"- has been resized."
+		fi
+	fi
+}

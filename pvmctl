@@ -6,6 +6,7 @@
 . "$funcdir/vm"
 . "$funcdir/offback"
 . "$funcdir/tmpl"
+. "$funcdir/disk"
 
 # The file to use as a template when creating new VM configs
 template="$basedir/Scripts/template.pvm"
@@ -22,7 +23,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.15.0"
+scriptversion="2.16.0"
 
 # Functions used in the script
 load_defaults()
@@ -1783,6 +1784,7 @@ do_usage()
 	        ${scriptname} mkimg    host image_name image_size  - create a disk image 
 	        ${scriptname} rmimg    host image_name             - remove disk image of the host
 	        ${scriptname} rnimg    host image_name new_name    - rename disk image of the host
+	        ${scriptname} resize   host image_index size[K|M|G]- resize disk image of the host
 	
 	        ${scriptname} new      host_name sid               - Create A virtual machine
 	        ${scriptname} create   template host_name sid      - Create A virtual machine from template
@@ -1981,6 +1983,9 @@ case "${1}" in
 		;;
 	"choffnode")
 		do_choffnode "$2"
+		;;
+	"resize")
+		do_resize "$2" "$3" "$4"
 		;;
 	"ver")
 		do_ver
