@@ -23,7 +23,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.16.0"
+scriptversion="2.16.1"
 
 # Functions used in the script
 load_defaults()

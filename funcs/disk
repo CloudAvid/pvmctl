@@ -7,6 +7,7 @@ do_resize()
 	local index
 	if [[ -z "$1" || -z "$2" || -z "$3" ]]; then
 		echo_usage "usage: host image_index size[K|M|G]"
+		exit 1
 	fi
 
 	check_host "$1"
