@@ -23,7 +23,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.16.1"
+scriptversion="2.17.0"
 
 # Functions used in the script
 load_defaults()
@@ -360,6 +360,10 @@ do_start()
 			;;
 	esac
 
+	if [[ "$nokvm" = "yes" ]]; then
+		confkvm="-no-kvm"
+	fi
+
 	confcpus="$cpus"
 	if [[ "$cpus" -lt "$mincpus" ]]; then
 		confcpus="$mincpus"
@@ -434,6 +438,7 @@ do_start()
 		-monitor $confmonitor \
 		$confusb \
 		$confacpi \
+		$confkvm \
 		"${drives[@]}"
 	# check if the vm is running?
 	if [[ $? -eq 1 ]]; then
@@ -930,6 +935,7 @@ _rebuild_conf()
 	echo "offback_autosnap_no=\"$offback_autosnap_no\"" >> "$confdir/${clist[0]}.pvm"
 	echo "mem=\"$mem\"" >> "$confdir/${clist[0]}.pvm"
 	echo "noacpi=\"$noacpi\"" >> "$confdir/${clist[0]}.pvm"
+	echo "nokvm=\"$nokvm\"" >> "$confdir/${clist[0]}.pvm"
 	echo "cpus=\"$cpus\"" >> "$confdir/${clist[0]}.pvm"
 	echo "cpus_sockets=\"$cpus_sockets\"" >> "$confdir/${clist[0]}.pvm"
 	echo "cpus_cores=\"$cpus_cores\"" >> "$confdir/${clist[0]}.pvm"
@@ -1577,6 +1583,7 @@ do_binfo()
 	_out="$_out""desciption $des\n" 
 	_out="$_out""memory $mem\n" 
 	_out="$_out""noacpi $noacpi\n" 
+	_out="$_out""nokvm $nokvm\n" 
 	_out="$_out""cpu# $cpus\n" 
 	_out="$_out""mouse_type $mouse\n" 
 	_out="$_out""network $nic\n" 

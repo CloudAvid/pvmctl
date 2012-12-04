@@ -165,6 +165,9 @@ _pinfox_vminfo()
 	fi
 	infox+="</snaps>"
 	infox+="<basevm>$basevm</basevm>"
+	if [[ $nokvm = "yes" ]]; then
+		infox+="<nokvm>yes</nokvm>"
+	fi
 	infox+="</venv>"
 	#infox+="</pvm>"
 	echo "$infox"

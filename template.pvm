@@ -40,6 +40,10 @@ mem="1024"
 # noacpi cannot be set if cpus > 1.
 noacpi=""
 
+# Don't support kvm module.
+# Values: yes: Don't use
+nokvm=""
+
 # The number of virtual CPUs to assign to the VM.
 # Stable values are 1-4.
 # cpus must be set to 1 if noacpi is set.
