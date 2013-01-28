@@ -158,10 +158,11 @@ do_create_from_dirtmpl()
 		echo_error "Template doesn't exist ..."
 		exit 1
 	fi
-	$sed -e "s/$1\__/$2/g" -e "/macaddr\[.*\]=\".*\"/d" "$bidir/$1/$1-config.pvm" > "/tmp/$2-beta"
+	$sed -e "s/$1\__/$2/g" -e "/macaddr\[.*\]=\".*\"/d" -e "s/^basevm=\".*/basevm=\"$1\"/" "$bidir/$1/$1-config.pvm" > "/tmp/$2-beta"
 	template="/tmp/${2}-beta"
 	do_new "$2" "$3"
 	load_configfile "$2"
+	$rm -f "$template" > /dev/null 2>&1
 
 	# Number of virtual disks
 	no_vdisk="${#disk[@]}"

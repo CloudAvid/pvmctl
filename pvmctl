@@ -23,7 +23,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.17.0"
+scriptversion="2.17.1"
 
 # Functions used in the script
 load_defaults()
@@ -914,7 +914,7 @@ _rebuild_conf()
 		if [[ $__var = ${clist[0]} ]]; then 
 			continue
 		fi
-		echo ${__var//' '/'\ '} >> "$temp_conf"
+		echo ${__var//' '/'\ '} >>  "$temp_conf"
 	done
 
 	. $temp_conf
