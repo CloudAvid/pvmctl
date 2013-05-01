@@ -23,7 +23,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.17.1"
+scriptversion="2.18.0"
 
 # Functions used in the script
 load_defaults()
@@ -420,18 +420,67 @@ do_start()
 		vncpasswd=",password"
 	fi
 
+	usb2_conf="-device ich9-usb-ehci1,id=usb,bus=pci.0,addr=0x8.0x7 -device ich9-usb-uhci1,masterbus=usb.0,firstport=0,bus=pci.0,multifunction=on,addr=0x8 -device ich9-usb-uhci2,masterbus=usb.0,firstport=2,bus=pci.0,addr=0x8.0x1 -device ich9-usb-uhci3,masterbus=usb.0,firstport=4,bus=pci.0,addr=0x8.0x2"
+
+	vdagent_conf="-device virtio-serial-pci -device virtserialport,chardev=spicechannel0,name=com.redhat.spice.0 -chardev spicevmc,id=spicechannel0,name=vdagent"
+
+	_usbredir_no=$(( $usbredir_no ))
+	for ((i = 0; i < $_usbredir_no; ++i)) do
+		usbredir_conf="$usbredir_conf -chardev spicevmc,id=charredir$i,name=usbredir -device usb-redir,chardev=charredir$i,id=redir$i"
+	done
+
+	case "$vga_card" in
+		"cirrus")
+			vga_conf="-vga cirrus"
+			;;
+		"qxl")
+			vga_conf="-vga qxl"
+			;;
+		"vga")
+			vga_conf=""
+			;;
+		"vmvga")
+			vga_conf="-vga qxl"
+			;;
+		"xen")
+			vga_conf="-vga xen"
+			;;
+		*)
+			vga_conf=""
+			;;
+	esac
+# Values: ac97, es1370, ich6, pcspk, sb16
+
+	case "$sound_card" in
+		"ac97")
+			sound_conf="-device AC97,id=sound0"
+			;;
+		"es1370")
+			sound_conf="-device ES1370,id=sound0"
+			;;
+		*)
+			sound_conf=""
+			;;
+	esac
+
+#		-usb \
+#		-usbdevice $confmouse \
+
 	# Start the VM
 	echo "Attempting to start VM for ${1} ..."
 	${kvm} \
 		-name $host \
 		-smp $confcpus \
 		-m $confmem \
+		$usb2_conf \
+		$vdagent_conf \
+		$usbredir_conf \
+		$vga_conf \
+		$sound_conf \
 		-vnc "$( $uname -n ):$id"$vncpasswd \
 		-spice addr=$( $uname -n ),port=$spiceport,$sppasswd \
 		-daemonize \
 		-localtime \
-		-usb \
-		-usbdevice $confmouse \
 		$confnet \
 		-pidfile "$piddir/$host.pid" \
 		-boot menu=on,order=$boot \
@@ -946,6 +995,9 @@ _rebuild_conf()
 	echo "host_usb1=\"$host_usb1\"" >> "$confdir/${clist[0]}.pvm"
 	echo "password=\"$password\"" >> "$confdir/${clist[0]}.pvm"
 	echo "basevm=\"$basevm\"" >> "$confdir/${clist[0]}.pvm"
+	echo "usbredir_no=\"$usbredir_no\"" >> "$confdir/${clist[0]}.pvm"
+	echo "vga_card=\"$vga_card\"" >> "$confdir/${clist[0]}.pvm"
+	echo "sound_card=\"$sound_card\"" >> "$confdir/${clist[0]}.pvm"
 	
 	no_usbs=${#host_usb[@]}
 	np_usbs=0

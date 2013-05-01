@@ -71,6 +71,17 @@ boot="c"
 # use 'bus.addr' or 'vendor_id:product_id'
 host_usb1=""
 
+# number of usb resirection 
+usbredir_no=""
+
+# Type of VGA card.
+# Values: cirrus, qxl, vmvga, xen, vga
+vga_card="cirrus"
+
+# Type of sound card
+# Values: ac97, es1370
+sound_card=""
+
 # If the VM is set to boot from "d" and "d" is a CD-ROM, an extra '-no-reboot'
 # option is added to the pvm commandline.  This will cause the VM to treat a
 # "reboot" command as if it were a "shutdown" command.
