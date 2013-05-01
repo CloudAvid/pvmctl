@@ -23,7 +23,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.18.0"
+scriptversion="2.18.1"
 
 # Functions used in the script
 load_defaults()
@@ -235,19 +235,19 @@ do_start()
 				;;
 		esac
 
-		case ${snapshot[i]} in
-			"on")
-				disksnapstr=",snapshot=on"
-				;;
-			"off")
-				disksnapstr=",snapshot=off"
-				;;
-		esac
+		#case ${snapshot[i]} in
+		#	"on")
+		#		disksnapstr=",snapshot=on"
+		#		;;
+		#	"off")
+		#		disksnapstr=",snapshot=off"
+		#		;;
+		#esac
 
 		# Build the drive entry that will be passed to kvm
 		drives[_drives_index]="-drive"
 		_drives_index=$((_drives_index + 1))
-		drives[_drives_index]="index=$index,media=$media,if=$disktype,file=$disk$extboot$cachestr$disksnapstr"
+		drives[_drives_index]="index=$index,werror=stop,media=$media,if=$disktype,file=$disk$extboot$cachestr$disksnapstr"
 		_drives_index=$((_drives_index + 1))
 	done
 
