@@ -25,6 +25,7 @@ $scriptname generates PVM information in XML format.
                  $scriptname vsws			- list of virtual switches
                  $scriptname cluster			- print out cluster information
                  $scriptname offback			- print out offsite backup settings
+                 $scriptname objheader			- list of objects headers
 	end-of-help
 }
 
@@ -62,6 +63,9 @@ case "$1" in
 		;;
 	"offback")
 		pinfox_offback
+		;;
+	"objheader")
+		pinfox_objheader
 		;;
 	"help")
 		pinfox_help

@@ -173,6 +173,40 @@ _pinfox_vminfo()
 	echo "$infox"
 }
 
+# Generate header of VM Object.
+# usage: _pinfox_vmheader host
+_pinfox_vmheader()
+{
+	local infox
+	local first_disk
+	local no_vdisk
+	local np_vdisk
+
+	check_host "$1"
+	load_configfile "$1"
+
+	infox="<name>$1</name>"
+	infox+="<id>$id</id><sid>$sid</sid>"
+	infox+="<eths>"
+
+	# Number of Ethernet Cards
+	no_eths="${#vlan[@]}"
+	# Number of Processed Ethernet Cards
+	np_eths=0
+	for (( i =0; $np_eths < $no_eths; ++i)); do
+		if [[ ${vlan[i]-__NULL__} = "__NULL__" ]]; then
+			continue;
+		fi
+		np_eths=$(( ++np_eths ))
+		infox+="<eth>"
+		infox+="<vlan>${vlan[i]}</vlan>"
+		infox+="</eth>"
+	done
+	infox+="</eths>"
+
+	echo "$infox"
+}
+
 pinfox_hostinfo()
 {
         local infox
@@ -215,6 +249,25 @@ pinfox_vms()
 	for ((i=0; i<$vms_no; ++i)); do
 		infox+="<pvm>"
 		infox+=$( pinfox_vminfo ${vms[i*3]} )
+		infox+="<cluster><node>${vms[i*3+1]}</node><status>${vms[i*3+2]}</status></cluster>"
+		infox+="</pvm>"
+	done
+	infox+="</pvm_vms>"
+	echo $infox
+}
+
+pinfox_vms_header()
+{
+	local infox
+	local vms
+	local vms_no
+	local i
+	infox="<pvm_vms_header ver=\"$xver\">"
+	vms=($( $pcad status | $grep service | $cut -d ":" -f 2 ))
+	vms_no=$((${#vms[@]} / 3))
+	for ((i=0; i<$vms_no; ++i)); do
+		infox+="<pvm>"
+		infox+=$( _pinfox_vmheader ${vms[i*3]} )
 		infox+="<cluster><node>${vms[i*3+1]}</node><status>${vms[i*3+2]}</status></cluster>"
 		infox+="</pvm>"
 	done
@@ -437,5 +490,20 @@ pinfox_offback()
 	done)
 	infox+="</rsites></pvm_offback>"
 	echo $infox
+}
+
+# Headers of objects in PVM.
+pinfox_objheader()
+{
+	local infox;
+
+	infox="<pvm_obj_header ver=\"$xver\">"
+	infox+=$(pinfox_vms_header)
+	infox+=$(pinfox_tmpls)
+	infox+=$(pinfox_vsws)
+	infox+=$(pinfox_sids)
+	infox+=$(pinfox_isos)
+	infox+="</pvm_obj_header>"
+	echo "$infox"
 }
 
