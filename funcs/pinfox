@@ -271,7 +271,7 @@ pinfox_vms_header()
 		infox+="<cluster><node>${vms[i*3+1]}</node><status>${vms[i*3+2]}</status></cluster>"
 		infox+="</pvm>"
 	done
-	infox+="</pvm_vms>"
+	infox+="</pvm_vms_header>"
 	echo $infox
 }
 

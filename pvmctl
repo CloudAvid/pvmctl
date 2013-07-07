@@ -23,7 +23,7 @@ sleeptime="3"
 
 # What are we called?
 scriptname=$( "$basename" "$0" )
-scriptversion="2.18.1"
+scriptversion="2.18.2"
 
 # Functions used in the script
 load_defaults()
@@ -394,10 +394,6 @@ do_start()
 	     fi
 	fi
 
-	# Check for host-usb device
-	if [[ ! -z $host_usb1 ]]; then
-		confusb="-usbdevice host:$host_usb1"
-	fi
 	# number of host usbs
 	no_usbs=${#host_usb[@]}
 	# number of processes host usbs
@@ -408,7 +404,22 @@ do_start()
 		fi
 		np_usbs=$(( ++np_usbs ))
 
-		confusb+=" -usbdevice host:${host_usb[i]}"
+		#confusb+=" -usbdevice host:${host_usb[i]}"
+		x=${host_usb[i]}
+		point=$(expr "$x" : ".*\.")
+		if [[ $point -eq 0 ]]; then
+			colon=$(expr "$x" : ".*:")
+			if [[ $colon -eq 0 ]]; then
+				continue
+			fi
+			vendorid=$( expr substr "$x" 1 $(($colon - 1)))
+			productid=$( expr substr "$x" $(($colon + 1)) $((${#x} - $colon)))
+			confusb+="-device usb-host,vendorid=$vendorid,productid=$productid,id=usb$(($i + 1))"
+		else
+			hostbus=$( expr substr "$x" 1 $(($point - 1)))
+			hostaddr=$( expr substr "$x" $(($point + 1)) $((${#x} - $point)))
+			confusb+="-device usb-host,hostbus=$hostbus,hostaddr=$hostaddr,id=usb$(($i + 1))"
+		fi
 	done
 
 	# Setting Spice port
