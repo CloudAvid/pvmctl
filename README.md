@@ -1,12 +1,14 @@
 # Introduction
 **_pvmctl_**, part of PVM-Prototype, is a set of scripts and schemes to manage virtual machines based on KVM.
 
-**_pvmctl_** is part of PVM-prototype that was PDNSoft first try to write our special hypervisor based on KVM named PVM. It was 
-developed based on early versions of kvmctl.
+**_pvmctl_** is part of PVM-prototype, our early try to write special hypervisor based on KVM named **_PVM_**. 
 
-By **_pvmctl_** user can manage virtual-machines based on KVM. use **_pvmctl help_** to see pvmctl abilities. Read [Project wiki](https://github.com/pdnsoft/pvmctl/wiki) for more information.
+**_pvmctl_** has been developed based on early versions of kvmctl.
 
-**_pvmctl_** has a wraper for cluster environment named [pcad](https://github.com/pdnsoft/pcad).
+By **_pvmctl_** user could manage virtual-machines based on KVM. use **_pvmctl help_** to see pvmctl abilities. 
+Read [Project wiki](https://github.com/pdnsoft/pvmctl/wiki) for more information.
+
+**_pvmctl_** has a wraper for cluster environment named [pcad](https://github.com/pdnsoft/pcad) to achive abilities like of HA.
 
 # Installation
 
@@ -19,7 +21,7 @@ $ ./install-pvmctl
 
 Complete tutorial located at [Project wiki](https://github.com/pdnsoft/pvmctl/wiki).
 
-See also **_pvmctl help_**
+See also **_pvmctl help_**:
 ```shell
 pvmctl is a management and control script for KVM-based virtual machines.
 
