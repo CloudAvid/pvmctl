@@ -3,7 +3,7 @@
 
 **_pvmctl_** is part of PVM-prototype, our early try to write special hypervisor based on KVM named **_PVM_**. 
 
-**_pvmctl_** has been developed based on early versions of kvmctl.
+**_pvmctl_** has been developed based on early versions of [kvmctl](http://www.linux-kvm.org/page/HowToConfigScript).
 
 By **_pvmctl_** user could manage virtual-machines based on KVM. use **_pvmctl help_** to see pvmctl abilities. 
 Read [Project wiki](https://github.com/pdnsoft/pvmctl/wiki) for more information.
