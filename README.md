@@ -6,9 +6,9 @@
 **_pvmctl_** has been developed based on early versions of [kvmctl](http://www.linux-kvm.org/page/HowToConfigScript).
 
 By **_pvmctl_** user could manage virtual-machines based on KVM. use **_pvmctl help_** to see pvmctl abilities. 
-Read [Project wiki](https://github.com/pdnsoft/pvmctl/wiki) for more information.
+Read [Project wiki](https://github.com/CloudAvid/pvmctl/wiki) for more information.
 
-**_pvmctl_** has a wraper for cluster environment named [pcad](https://github.com/pdnsoft/pcad) to achive abilities like of HA.
+**_pvmctl_** has a wraper for cluster environment named [pcad](https://github.com/CloudAvid/pcad) to achive abilities like of HA.
 
 # Installation
 
@@ -19,7 +19,7 @@ $ ./install-pvmctl
 
 # Documentation
 
-Complete tutorial located at [Project wiki](https://github.com/pdnsoft/pvmctl/wiki).
+Complete tutorial located at [Project wiki](https://github.com/CloudAvid/pvmctl/wiki).
 
 See also **_pvmctl help_**:
 ```shell
@@ -81,6 +81,6 @@ If you are capable of contributing code changes, we encourage you to do so. You 
 * ... 
 
 # Bugs
- Please use github [issues](https://github.com/pdnsoft/pvmctl/issues) to report bugs. 
+ Please use github [issues](https://github.com/CloudAvid/pvmctl/issues) to report bugs. 
 # About
-Copyright 2010-2015 [PDNSoft](http://www.pdnsoft.com).
+Copyright 2010-2020 [CloudAvid](https://www.cloudavid.com).
